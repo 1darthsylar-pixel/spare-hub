@@ -1,0 +1,48 @@
+name: door-probes
+# Outside 401 probes for the Gate City Hub (built Aug 1 2026, Matt's sweep).
+# Knocks on every session-token door with NO token and expects to be told no,
+# then reports a heartbeat that the 5:00am security sweep reads. A dead runner
+# shows up there as a stale heartbeat — never as silence.
+#
+# ONE-TIME SETUP (Matt): GitHub repo → Settings → Secrets and variables →
+# Actions → New repository secret → Name: HUB_JOB_KEY, Value: the same key
+# cron-job.org uses on /api/run-job. Until it exists, the report step fails
+# and the sweep DMs that the probes never reported — that DM is the reminder.
+on:
+  schedule:
+    - cron: "17 9 * * *"   # 5:17 AM ET during EDT
+    - cron: "17 21 * * *"  # 5:17 PM ET during EDT
+  workflow_dispatch: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Knock on every locked door with no token
+        run: |
+          set -u
+          FAILS=""
+          probe () { # $1 name  $2 method  $3 path — expect 401 with no token
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" -X "$2" "https://gatecityhub.com$3" --max-time 30 || echo 000)
+            echo "$1 -> $CODE"
+            if [ "$CODE" != "401" ]; then FAILS="$FAILS,$1:$CODE"; fi
+          }
+          probe hr-store      POST /api/hr-store
+          probe tool-notify   POST /api/tool-notify
+          probe slack-notify  POST /api/slack-notify
+          probe notify        POST /api/notify
+          probe pin-set       POST /api/pin-set
+          probe pin-clear     POST /api/pin-clear
+          probe doc-delete    POST /api/doc-delete
+          # log-open is DELIBERATELY excluded (Aug 1 2026, first live run). It
+          # always returns 200 so analytics logging can never stop a tool from
+          # opening; its security is that NO row is written without a token
+          # (the `if (tok)` guard in worker.js), which an HTTP status check
+          # cannot see. Probing it for 401 produced a daily false "open door"
+          # DM — the exact noise that trains the reader to ignore the sweep.
+          probe live-schedule GET  /api/live-schedule
+          probe ai-summary    GET  /api/ai-summary
+          FAILS="${FAILS#,}"
+          if [ -n "$FAILS" ]; then STATUS=fail; else STATUS=pass; fi
+          curl -s "https://gatecityhub.com/api/run-job?job=probe-heartbeat&key=${{ secrets.HUB_JOB_KEY }}&quiet=1&status=$STATUS&fails=$FAILS" > /dev/null
+          echo "reported: $STATUS ${FAILS:+($FAILS)}"

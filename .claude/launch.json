@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "setup-page", "runtimeExecutable": "npx", "runtimeArgs": ["--yes", "http-server", "/tmp/pv2", "-p", "4601", "-c-1"], "port": 4601 },
+    { "name": "hub-dev", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 5173 }
+  ]
+}

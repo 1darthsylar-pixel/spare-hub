@@ -1,0 +1,40 @@
+# Secrets. This repo had NO .gitignore at all, so anything dropped into .env
+# went straight to GitHub. A service key, RUN_JOB_KEY or Slack bot token added
+# there would have been published automatically with no warning. That is what
+# this file is for.
+#
+# ⚠️⚠️ .env ITSELF IS DELIBERATELY STILL TRACKED — DO NOT UNTRACK IT YET.
+# VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are BUILD-TIME values. Vite bakes
+# them into the bundle when Cloudflare builds, and Cloudflare builds from a
+# clean git clone. Remove .env from the repo and that build gets nothing:
+# `isShared` in store.js goes false, the whole Hub silently falls back to this
+# browser's localStorage, and every tool opens EMPTY and saves nothing anyone
+# else can see. Confirmed live: the current bundle carries the project URL, so
+# the build really does depend on this file.
+#
+# To untrack it safely, in this order:
+#   1. Add both VITE_ vars as build variables on the Cloudflare worker.
+#   2. Deploy once and confirm the new bundle still contains the project URL.
+#   3. Only then `git rm --cached .env`.
+# Both keys are publishable by design, so tracking them costs little. Rotating
+# the anon key is still worth doing since it sat in git history.
+.env.*
+!.env.example
+
+# Build output and dependencies. Untracked until now only by luck.
+node_modules/
+dist/
+.vite/
+
+# `wrangler dev` scratch: miniflare's local KV and cache as sqlite, plus a temp
+# bundle per run. Machine-local, regenerated every run, and nothing in it is
+# production data. Missing until Aug 12 2026 only because nobody had run the
+# Worker locally in this repo — the setup notes use the Cloudflare dashboard,
+# not the CLI. The first local run drops ~20 untracked files in the root.
+.wrangler/
+
+# Editor and OS noise
+.DS_Store
+*.swp
+.idea/
+.vscode/

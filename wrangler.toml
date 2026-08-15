@@ -1,0 +1,82 @@
+name = "spare-hub"
+compatibility_date = "2025-06-01"
+main = "worker.js"
+
+# ⚠️⚠️ WITHOUT THIS LINE, EVERY DEPLOY DELETES EVERY Text VARIABLE IN THE
+# DASHBOARD. `npx wrangler deploy` REPLACES the worker's plain-text variables
+# with the ones declared in this file. This file declares none, so wrangler
+# prunes them all to match. Secrets survive; Text does not.
+# ⇒ IT COST VILLAGE AN HOUR. SUPABASE_URL was set as Text there, so the Worker
+# lost the address of its own database on the first deploy after it was entered.
+# Six pushes in an hour, six wipes, and the symptom looked like a bad setup key
+# every single time because that is the first thing the claim route checks.
+# ⚠️ GATE CITY HAS NOT BEEN BITTEN, AND THAT IS LUCK RATHER THAN DESIGN.
+# Everything this Worker needs today happens to be a Secret. The day anybody
+# adds a Text variable in the dashboard, the next merge deletes it — and a merge
+# deploys and promotes itself in about a minute, so nobody is watching.
+# ★ WHAT THIS FIXES: `keep_vars` tells wrangler to leave dashboard variables
+# alone instead of pruning them to match this file.
+# ⚠️ IT DOES NOT MAKE Text SAFE ON ITS OWN. Anything the app genuinely needs
+# should be a Secret, which never had this problem, and Text kept for values
+# worth being able to read back while debugging.
+# ⚠️⚠️ THE REAL REASON IT IS HERE: A CLONE IS A SNAPSHOT OF THIS FILE. Village
+# was fixed in Village and guilford-hub still shipped without it, because the
+# fix never came back to the source. Every store stood up from this repo
+# inherits whatever this line says, so fixing it here is the only version of
+# this fix that stops at store four instead of being redone at each one.
+keep_vars = true
+
+# ⚠️ THESE TWO LINES ARE THE ONLY THING THAT MAKES "DISABLE" STICK. Turning the
+# workers.dev route off in the dashboard and leaving this file alone does not
+# hold: Cloudflare documents that a deploy re-enables it when the config does
+# not say otherwise, and every merge here is a deploy that promotes itself. The
+# switch would read "disabled" the day it was clicked and be serving again by
+# the next merge, with nothing anywhere to say so.
+# ★ WHY IT MATTERS: both of these serve the WHOLE Hub, real Supabase behind
+# them, at an address that is not gatecityhub.com — which is the one thing
+# every external URL in this project is supposed to avoid. `workers.dev` is a
+# single fixed name, guessable straight from the worker name above. Preview
+# URLs are one address per version on that same domain.
+# ⚠️ NOTHING IN THIS REPO POINTS AT EITHER, checked rather than assumed before
+# this landed: the cron entries, the door-probe workflow and every in-app link
+# use gatecityhub.com. The one workers.dev string in the repo is a REPO-MAP.md
+# row for `gate-city-hr-api`, a worker that no longer exists on the account.
+# ⚠️ `preview_urls` IS REDUNDANT ON WRANGLER 4.121, where it already follows
+# `workers_dev`, and is written anyway. That default has changed three times:
+# enabled regardless before 4.34, disabled regardless to 4.43, and matching
+# `workers_dev` from 4.44. Stating it means an upgrade cannot quietly reopen
+# the door.
+workers_dev = false
+preview_urls = false
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+binding = "ASSETS"
+run_worker_first = true
+
+[[kv_namespaces]]
+binding = "GATE_CITY_KV"
+id = "SET-THIS-TO-THE-NEW-STORE-KV-NAMESPACE-ID"
+
+# Cron scheduling is handled externally by cron-job.org hitting
+# /api/run-job?job=<name>&key=<token> on the schedule below, since
+# Cloudflare's native Cron Triggers consistently failed to deploy on this
+# account (the /workers/scripts/gate-city-hub/schedules API call errored
+# on every attempt, both via `wrangler deploy` and the dashboard UI).
+# If that ever gets resolved and you want to switch back to native Cron
+# Triggers, add back:
+#
+# [triggers]
+# crons = [
+#   "0 12 * * 0",   # Sunday 8am ET — Weekly Cleaning summary + Waste report
+#   "0 8 * * 1,4",  # Mon/Thu 4am ET — Change fund order calc
+#   "0 * * * *",    # hourly — Food Safety daily reminder + Equipment tier-2+ flag
+# ]
+#
+# Current external schedule (cron-job.org, all times America/New_York):
+#   Cleaning Summary        — Sunday 8:00 AM
+#   Waste Report            — Sunday 8:00 AM
+#   Audit Order Calc        — Monday & Thursday 4:00 AM
+#   Food Safety Reminder    — Daily 8:00 AM
+#   Equipment Reminder Flag — Monday 6:00 AM

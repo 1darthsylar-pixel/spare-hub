@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: #F3F4F6;
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+* { -webkit-tap-highlight-color: transparent; }
+
+/* iOS zooms the whole page in when you focus a form control whose text is
+   under 16px. The Hub used to suppress that by banning zoom outright in the
+   viewport meta — which also stopped a leader from pinching in to read a
+   number, on a shared iPad with no per-person text size. This fixes the cause
+   instead, so zoom can stay on.
+   ⚠️ COARSE POINTERS ONLY. Desktop keeps its denser sizing; this is aimed at
+   the store iPads, which are the only devices that zoom on focus.
+   ⚠️ Loses to the ~75 controls that set fontSize inline. Those still zoom on
+   focus until their inline sizes come out. Last rule in the file on purpose:
+   it has to beat equal-specificity Tailwind utilities like `text-sm`. */
+@media (pointer: coarse) {
+  input, select, textarea { font-size: 16px; }
+}
