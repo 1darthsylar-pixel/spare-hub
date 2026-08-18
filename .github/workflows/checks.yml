@@ -1,0 +1,44 @@
+name: checks
+# ⚠️⚠️ THIS EXISTS BECAUSE NOTHING RAN checks/run.mjs. Six static checks and
+# 120-odd test files, the repo's own gate, and every one of them depended on a
+# person remembering. On Aug 18 2026 that gap was measured: ten of this store's
+# data files had travelled into two clones and sat there, and the check that
+# would have caught it did not exist because nothing was running checks anyway.
+#
+# ⚠️ IT BLOCKS ON A PULL REQUEST AND IT ALSO RUNS ON A SCHEDULE. The pull
+# request arm stops a bad change. The daily arm catches the other kind: a check
+# that goes red because the WORLD moved, not because anybody pushed.
+#
+# ⚠️ THE BUILD STEP IS NOT OPTIONAL AND IS NOT ABOUT DEPLOYING. `bundleScan`
+# reads dist/, and `dupKeys` imports typescript from node_modules. Without both,
+# three test files fail for reasons that have nothing to do with the code, which
+# is the fastest way to teach everybody to ignore a red check.
+#
+# ONE-TIME SETUP (host): Settings → Branches → protect `main` → require the
+# status check "checks". Without that this reports and does not block.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 9 * * *"   # 5:00 AM ET during EDT, beside the security sweep
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install exactly what the lockfile says
+        run: npm ci --no-audit --no-fund
+      - name: Build, because two checks read the built bundle
+        run: npx vite build
+      - name: The repo's own six checks and every test file
+        run: node checks/run.mjs
