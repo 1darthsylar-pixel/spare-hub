@@ -36,11 +36,11 @@ diff.**
 
 ## Synced since the snapshot
 
-Nothing yet. Add a row per port, in the same commit as the port.
+Add a row per port, in the same commit as the port.
 
 | Date | What | Why it was worth porting |
 |---|---|---|
-| | | |
+| Aug 18 2026 | The closed-hours deploy window. `deployWindow.mjs`, `deployWindow.test.mjs`, `.github/workflows/deploy-window.yml`, `.github/deploy-window.json` | Built in `guilford-hub` and `village-hub` on Aug 17 and never sent back to the origin, so this repo and every store cloned after it would have been born without it. Ported here **and into `gate-city-hub` in the same change** — the origin copy is the half that makes `newstore.mjs` carry it to the next store. Byte-identical to the two stores that already had it, 40 assertions passing. Left `"live": false`, which is correct until this store starts entering its own numbers. |
 
 ---
 
