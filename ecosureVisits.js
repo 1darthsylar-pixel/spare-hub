@@ -168,24 +168,9 @@ export function mergeEcosure(saved, round, rec) {
   return { ...base, [round]: rec };
 }
 
-/* Q2-2026, transcribed from the report Matt pasted on Aug 6 2026. The four
-   findings are the report's own "Top Focus Area" list; the summary is derived
-   from them, NOT from the matrix on that page, which disagrees with itself. */
-export const ECOSURE_SEED = {
-  "Q2-2026": {
-    round: "Q2-2026",
-    level: 2,
-    levelLabel: "Good",
-    at: "2026-08-06T00:00:00.000Z",
-    findings: [
-      { code: "101.7", severity: "HIGH", repeat: true, category: "TIME & TEMPERATURE",
-        detail: "Boards/Cook-line/Warming Units: TCS/PHF foods held in cold holding at or below 40°F" },
-      { code: "351.1", severity: "MEDIUM", repeat: false, category: "CLEANING & SANITATION",
-        detail: "Compartment Sink/Dish Machine: manual warewashing and dishwashing facilities properly maintained, operated, stocked, clean and in good condition" },
-      { code: "341.1", severity: "LOW", repeat: false, category: "CLEANING & SANITATION",
-        detail: "Breading Table/Thaw Cabinet: all non-food contact surfaces are clean" },
-      { code: "513.3", severity: "LOW", repeat: false, category: "PESTS",
-        detail: "Dry Storage: pest control devices working and installed to prevent contamination of food related items" },
-    ],
-  },
-};
+/* ⚠️ THE ROUNDS THEMSELVES LIVE IN `ecosureSeed.js`, AND THE SPLIT IS THE POINT.
+   This file is code and travels to every store as it is; the rounds are THIS
+   store's health inspection findings and must not. `ecosureSeed.empty.js` is
+   what a clone receives. Re-exported here so every existing reader keeps its
+   import exactly as it was. */
+export { ECOSURE_SEED } from "./ecosureSeed.js";
