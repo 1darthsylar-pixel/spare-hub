@@ -36,11 +36,12 @@ diff.**
 
 ## Synced since the snapshot
 
-Nothing yet. Add a row per port, in the same commit as the port.
+Add a row per port, in the same commit as the port.
 
 | Date | What | Why it was worth porting |
 |---|---|---|
-| | | |
+| Aug 18 2026 | The closed-hours deploy window. `deployWindow.mjs`, `deployWindow.test.mjs`, `.github/workflows/deploy-window.yml`, `.github/deploy-window.json` | Built in `guilford-hub` and `village-hub` on Aug 17 and never sent back to the origin, so this repo and every store cloned after it would have been born without it. Ported here **and into `gate-city-hub` in the same change** — the origin copy is the half that makes `newstore.mjs` carry it to the next store. Byte-identical to the two stores that already had it, 40 assertions passing. Left `"live": false`, which is correct until this store starts entering its own numbers. |
+| Aug 18 2026 | **This store's copies of ten of the origin store's data files, emptied.** `fcrProjectionData` `fcrReferenceData` `fcrYtdSeed` `ipoPlanData` `cashAuditSeed` `daypartSeed` `guestSeed` `inventoryGapsSeed` `foodItemGapsSeed`, plus `ecosureSeed` split out of `ecosureVisits.js` | All ten were **byte-identical to the origin store's** here: eighteen months of its P&L, its cash counts with the counting leader named, its guest and mystery-shop scores, and its Q2-2026 Ecosure round. The Village was scrubbed by hand months ago and the generator was never told, so this repo kept them. **Nine never left `worker.js` and are gated there by an fsr check.** The tenth, `ECOSURE_SEED`, is imported by `FoodSafetyWalkthrough.jsx`, so it shipped: the origin store's findings were measured inside this repo's own `dist/` before the fix and are 0 after. Root fix is upstream in `newstore.mjs`, so no store after this one is born with them. |
 
 ---
 

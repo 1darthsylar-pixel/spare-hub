@@ -1,0 +1,11 @@
+{
+  "_comment": "Set live to true the day this store starts entering its own numbers. Until then changes merge any time. Rules and reasons live in deployWindow.mjs.",
+  "live": false,
+  "timezone": "America/New_York",
+  "start": "01:00",
+  "end": "04:00",
+  "days": [1, 2, 3, 4, 5, 6],
+  "skip": [["03:00", "03:15"]],
+  "emergencyLabel": "emergency",
+  "readyLabel": "ready"
+}

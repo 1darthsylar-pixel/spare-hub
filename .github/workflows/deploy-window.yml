@@ -1,0 +1,85 @@
+name: deploy-window
+# Matt, Aug 17 2026: "when new stores go live i need there updates to happen
+# during closed hours only unless its an emergency."
+#
+# A deploy here IS a merge — Cloudflare builds on a push to main and promotes
+# itself about a minute later with no human step in between. So the only thing
+# that can be held is the merge, and that is what this holds.
+#
+# ⚠️ THE RULES ARE NOT IN THIS FILE. They are in deployWindow.mjs, because a
+# rule buried in a shell step cannot be run and therefore cannot be tested —
+# and this one decides whether a change reaches real people during a rush.
+# deployWindow.test.mjs runs it, 40 assertions.
+#
+# Edit .github/deploy-window.json, never this file. Set "live": true the day the
+# store starts entering its own numbers.
+#
+# ONE-TIME SETUP (host): Settings → Branches → protect `main` → require the
+# status check "deploy-window". Without that this reports and does not block.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review]
+  schedule:
+    # Every 15 minutes through the window, in UTC. 05:00–08:00 UTC is 01:00–04:00
+    # ET while EDT is in effect. ⚠️ In winter this drifts an hour; the module
+    # checks the real ET clock and refuses outside the window, so the cost of the
+    # drift is a later merge, never an early one.
+    - cron: "*/15 5-7 * * 1-6"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # Reports on a pull request whether it may merge right now. Make it a required
+  # check and GitHub does the blocking.
+  gate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Is this store open right now?
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const { windowState } = await import("./deployWindow.mjs");
+            const cfg = fs.existsSync(".github/deploy-window.json")
+              ? fs.readFileSync(".github/deploy-window.json", "utf8") : null;
+            const labels = JSON.parse(process.env.LABELS || "[]");
+            const s = windowState({ config: cfg, labels });
+            console.log(`${s.allowed ? "OK" : "HOLD"} — ${s.reason}${s.at ? `  (store clock: ${s.at})` : ""}`);
+            if (!s.allowed) process.exit(1);
+          '
+
+  # Inside the window, merge anything the host has marked ready. This is what
+  # means nobody has to be awake at 1am.
+  auto-merge:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Merge what is ready, if the window is open
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const { windowState, readConfig } = await import("./deployWindow.mjs");
+            const raw = fs.existsSync(".github/deploy-window.json")
+              ? fs.readFileSync(".github/deploy-window.json", "utf8") : null;
+            const s = windowState({ config: raw });
+            console.log(`${s.allowed ? "OPEN" : "SHUT"} — ${s.reason}`);
+            if (!s.allowed) process.exit(0);
+            fs.writeFileSync(process.env.GITHUB_ENV, `READY_LABEL=${readConfig(raw).readyLabel}\n`, { flag: "a" });
+          '
+          # ⚠️ --auto, not a blind merge: GitHub still applies every required
+          # check. This decides WHEN, never whether the code is fit to ship.
+          for pr in $(gh pr list --label "$READY_LABEL" --state open --json number --jq '.[].number'); do
+            echo "merging #$pr"
+            gh pr merge "$pr" --squash --auto --delete-branch || echo "#$pr not mergeable yet, leaving it"
+          done
