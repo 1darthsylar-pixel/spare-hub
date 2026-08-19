@@ -97,8 +97,25 @@ export const L101_W2 = {
       items: [
         { id: "w2-qa-self-aware", type: "qa", title: "Fill in the blanks — self-awareness",
           prompt: "\"Self-awareness is the conscious knowledge of one's own ______, ______, ______, and ______.\"" },
-        { id: "w2-read-personality", type: "read", title: "Relationships and personality",
-          note: "Putting your relationship with someone in perspective helps when you're managing conflict with them. Some personalities simply don't mesh — but taking someone's personality into account can change how you handle it entirely.\n\nWe use the Enneagram in this class as the example. It isn't the only assessment, or necessarily the best one; it's the one our leaders here take so we can understand each other better." },
+        /* ⛔ THE ENNEAGRAM CAME OUT OF THIS WEEK ON Aug 19 2026. The reading
+           "Relationships and personality" lived here and named the Enneagram as
+           the assessment used in this class. The Leadership Development
+           Director at the origin store, who wrote this week, took the topic out
+           of it: "We took all Enneagram stuff out of the class. This is no
+           longer something required for applications or the class."
+
+           ⚠️ THIS FILE IS A SEED, NOT THE CLASS. L101Week.jsx: "renders until
+           somebody saves an edit; after that the stored version wins. One-way
+           door per class." So this changes what a class NOBODY HAS EDITED
+           starts from, and nothing else. A store that has saved its own Week 2
+           keeps exactly what it saved.
+
+           ⚠️ ONE THING WENT WITH IT THAT WAS NOT ABOUT THE ENNEAGRAM. The first
+           half of that reading was ordinary workbook content — that putting a
+           relationship in perspective helps when you are managing conflict, and
+           that some personalities simply do not mesh. It was pulled with the
+           rest because it lived in the same item. Restoring that sentence
+           without naming any assessment is a one-line job. */
         { id: "w2-read-approaches", type: "read", title: "Five approaches to conflict management",
           note: "Avoiding · Competing · Accommodating · Compromising · Collaborating." },
         { id: "w2-qa-approaches", type: "qa", title: "Your notes on the five approaches",
