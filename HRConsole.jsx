@@ -9,6 +9,10 @@ import { effectiveRole } from "./accessOverrides.js";
 import { collectEvalStrings, applyEvalStrings } from "./courseTranslate.js";
 import { hrInConsole, hrNormPerson, HR_ASSIGNABLE_LADDER, hrDisplayName } from "./hrRoster.js";
 import { kvGet, kvSet, kvGetResult, publishSharedRows, uploadDoc, signedDocUrl, deleteDoc, listSubmissions, HUB_TOKEN_KEY, hrSessionExpired } from "./store.js";
+/* ★ WHO MAY BE GIVEN AN EVALUATION, AND WHO MAY BE SUGGESTED INSTEAD. Two rules
+   that both used to read `rank >= 4` inline in three places — see evalPools.js
+   for why that is the mistake worth a file of its own. */
+import { evalAssignPool, evalRecommendPool } from "./evalPools.js";
 // ONE definition of "is this request mine", shared with the page this banner
 // links to. Verified no import cycle — ProfessionalGrowth imports only React
 // and store.js.
@@ -90,6 +94,45 @@ const todayLocal = () => {
    kvGet/kvSet already handle JSON on both paths, so these just delegate.
    loadAll() fans kvGet across the HR keys to drive the 20s live poll.
    ============================================================================ */
+/* ⚠️⚠️ ONE OPENER FOR EVERY PLACE A DOCUMENT IS OFFERED, and there are three:
+   the SOP Library, the Sent Documents list, and a team member's own file. Each
+   one used to render its own `<a href>` off a stored URL. A file held in the
+   Hub has no stored URL — it is signed at CLICK TIME and lives about five
+   minutes — so three copies would have meant three chances to render a dead
+   link, and a dead link on a document somebody has to sign reads as "the Hub is
+   broken" rather than "this expired".
+
+   ⚠️ SIGNED WHEN IT IS PRESSED, NEVER STORED. A URL saved beside the document
+   would be expired by the time anybody opened it, which is exactly the trap
+   ProfessionalGrowth records for its own coursework files.
+   ⚠️ IT SAYS WHY IT FAILED. "Nothing happens" on a document you have been asked
+   to sign is the worst of the three outcomes. */
+async function openHrDoc(d) {
+  const bucket = (d && (d.docBucket || d.bucket)) || "";
+  const path = (d && (d.docPath || d.path)) || "";
+  const link = (d && (d.attachUrl || d.driveUrl)) || "";
+  if (path) {
+    const url = await signedDocUrl(bucket || DOC_BUCKET_SOP, path, 600);
+    if (url) { window.open(url, "_blank", "noopener,noreferrer"); return true; }
+    window.alert("Couldn't open that document. The link may have expired — try again.");
+    return false;
+  }
+  if (link) { window.open(link, "_blank", "noopener,noreferrer"); return true; }
+  window.alert("There is no document attached to this one yet.");
+  return false;
+}
+/* Does this record have anything to open at all? Used so a button is not shown
+   on a document that has neither a file nor a link. */
+const hasHrDoc = (d) => !!(d && ((d.docPath || d.path) || (d.attachUrl || d.driveUrl)));
+
+/* ★ WHERE AN UPLOADED SOP DOCUMENT LIVES. The same private bucket personnel
+   files use, and it is already on the Worker's UPLOAD_BUCKETS list, so nothing
+   new has to be opened up for this.
+   ⚠️ MODULE SCOPE, because SopDocForm and SopLibrary are both module-level
+   functions and neither can see the component-local DOC_BUCKET further down.
+   Two constants naming one bucket would drift; this is the one for SOP. */
+const DOC_BUCKET_SOP = "hr-files";
+
 const HR_KEYS = ["gcfcr-hr-status", "gcfcr-hr-pins", "gcfcr-hr-info", "gcfcr-hr-files", "gcfcr-hr-evals", "gcfcr-hr-injuries", "gcfcr-hr-handbook", "gcfcr-hr-ldrhandbook", "gcfcr-hr-roles", "gcfcr-hr-sigs", "gcfcr-hr-evaltpl-v1", "gcfcr-hr-added-v1", "gcfcr-hr-docfiles-v1", "gcfcr-hr-evaltasks-v1", "gcfcr-hr-leadership-v1"];
 
 /* ── THE ROSTER, AND WHY IT'S TWO PIECES ──────────────────────────
@@ -2379,14 +2422,32 @@ function HRConsole({ launchers = [] }) {
   // ⚠️ Deleting a document does NOT remove sends already made from it — those
   // records carry their own title and url, so an acknowledgement trail survives
   // the document being tidied away. That is deliberate: the receipt is evidence.
-  const deleteSopDoc = (id) => mutSopDocs((xs) => (Array.isArray(xs) ? xs : []).filter((d) => d.id !== id));
+  /* ⚠️ PURGE THE FILE FIRST, WHILE WE STILL HOLD ITS HANDLE — the same order
+     removeDoc uses above and for the same reason: filter it out of the list
+     first and the binary is orphaned in storage with nothing pointing at it.
+     ⚠️ SENT RECORDS KEEP THEIR OWN COPY of the path, so a document deleted from
+     the library still opens for anybody who was asked to sign it. That is why
+     the confirm text can promise "acknowledgements are not lost". */
+  const deleteSopDoc = (id) => {
+    const d = (Array.isArray(sopDocs) ? sopDocs : []).find((x) => x.id === id);
+    const stillSent = (Array.isArray(sends) ? sends : []).some((x) => x.docPath && d && x.docPath === d.docPath);
+    if (d && d.docPath && !stillSent) deleteDoc(d.docBucket || DOC_BUCKET_SOP, d.docPath);
+    return mutSopDocs((xs) => (Array.isArray(xs) ? xs : []).filter((x) => x.id !== id));
+  };
 
   const sendDoc = (doc, opts) => {
     const { audience, role, area, ids, signRequired } = opts;
     const targetIds = audience === "select" ? (ids || []) : resolveTargets(audience, role, area);
     if (!targetIds.length) return { ok: false, count: 0 };
     const label = audience === "all" ? "Everyone" : audience === "role" ? "Role: " + role : audience === "area" ? "Area: " + area : targetIds.length + " selected";
-    const rec = { id: "snd_" + Date.now().toString(36), docId: doc.id || "", docTitle: doc.title || "Untitled document", driveUrl: doc.attachUrl || "", signRequired: !!signRequired, createdAt: new Date().toISOString(), audienceLabel: label, targetIds, acks: {} };
+    /* ⚠️⚠️ THE SEND TAKES A COPY OF WHERE THE DOCUMENT IS, and that is deliberate.
+       A send is a record of what somebody was asked to sign. If it pointed back
+       at the library entry, editing or deleting that entry later would silently
+       change what a past signature was against. The library's own delete
+       already promises this: "Documents already sent keep their own record."
+       ⚠️ BOTH SHAPES TRAVEL. `driveUrl` for a document that lives somewhere
+       else, `docBucket`/`docPath` for one held in the Hub. */
+    const rec = { id: "snd_" + Date.now().toString(36), docId: doc.id || "", docTitle: doc.title || "Untitled document", driveUrl: doc.attachUrl || "", docBucket: doc.docBucket || "", docPath: doc.docPath || "", signRequired: !!signRequired, createdAt: new Date().toISOString(), audienceLabel: label, targetIds, acks: {} };
     mutSends((xs) => [rec, ...xs]);
     if (signRequired) {
       targetIds.forEach((id) => {
@@ -3134,7 +3195,12 @@ function HRConsole({ launchers = [] }) {
           copy={{ ...EVAL_COPY_DEFAULT, ...(evalCopy || {}) }}
           /* Rank 4+ is Assistant Director and up, the same set the assignment
              screen offers as "who completes them" — one rule, one place. */
-          leaders={TEAM_EFF.filter((m) => statusOf(m.id) !== "terminated" && rankOf(m) >= 4)}
+          /* ⛔ THE RECOMMENDATION LIST, AND IT STAYS AT ASSISTANT DIRECTOR AND
+             UP. Bri, Aug 15 2026: "I don't want them to be 'recommended' as
+             someone to complete as a replacement — that option needs to be
+             limited to requesting ADs and Directors." A Team Leader may be
+             ASKED to write one; they may not hand it on to another Team Leader. */
+          leaders={evalRecommendPool(TEAM_EFF.filter((m) => statusOf(m.id) !== "terminated"), rankOf)}
           onRecommend={recommendTask}
           onSubmit={submitTask} onBack={() => setView("dir")} />
       )}
@@ -3886,7 +3952,14 @@ function Profile(props) {
         <div>
           {myDocs.map((s) => {
             const ack = (s.acks || {})[e.id] || null;
-            const statement = (s.signRequired ? "By signing below, I acknowledge that I have received and read this document." : "This document was shared with you for your reference.") + (s.driveUrl ? "\n\nDocument: " + s.driveUrl : "");
+            /* ⚠️⚠️ A SIGNED-URL MUST NEVER GO IN HERE. This string is kept as the
+               thing somebody signed against, forever. A link to a file held in
+               the Hub lives about five minutes, so pasting one into a permanent
+               record produces a signature pointing at a dead address — worse
+               than no address, because it looks like evidence. The TITLE is what
+               is permanent, so an uploaded document is named rather than linked. */
+            const statement = (s.signRequired ? "By signing below, I acknowledge that I have received and read this document." : "This document was shared with you for your reference.")
+              + (s.driveUrl ? "\n\nDocument: " + s.driveUrl : s.docPath ? "\n\nDocument: " + (s.docTitle || "held in the Hub") : "");
             return (
               <div key={s.id} style={{ marginBottom: 12 }}>
                 <SignSection title={s.docTitle} sub={"Sent " + fmtDate(s.createdAt) + (s.signRequired ? " \u00b7 acknowledgment required" : " \u00b7 reference only")} statement={statement} ack={ack ? { date: fmtDate(ack.at), signature: ack.sig } : null} canSign={isSelf && s.signRequired && !ack} selfView={isSelf} e={e} acting={acting} onSign={(sig) => onAckSend(s.id, sig)} signLabel="Acknowledge" />
@@ -5340,7 +5413,10 @@ function AssignEvals({ templates, team, teamDir, copy, onCopy, onAssign, onBack 
         <Lbl t="Who completes them" />
         <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} style={S.in}>
           <option value="">— Choose a leader —</option>
-          {team.filter((m) => rankOf(m) >= 4).map((m) => <option key={m.id} value={m.id}>{m.name} · {m.role}</option>)}
+          {/* ★ TEAM LEADERS ARE ON THIS LIST SINCE Aug 19 2026 (Bri: "allow Team
+              Leaders to be on the assign list for evaluations"). The
+              RECOMMENDATION list further down is deliberately NOT widened. */}
+          {evalAssignPool(team, rankOf).map((m) => <option key={m.id} value={m.id}>{m.name} · {m.role}</option>)}
         </select>
         <Lbl t="Due date" />
         <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={S.in} />
@@ -5523,7 +5599,12 @@ function ManageEvalTasks({ tasks, team, onPatch, onDelete, onApproveRec, onDenyR
   const [openId, setOpenId] = useState(null);
   const rows = tasks.filter((t) => filter === "all" || t.status === filter);
   const counts = tasks.reduce((a, t) => ({ ...a, [t.status]: (a[t.status] || 0) + 1 }), {});
-  const leaders = team.filter((m) => rankOf(m) >= 4);
+  /* ⚠️ "Who completes it" IS ASSIGNING, not recommending, so it takes the
+     assign list. This was the third inline copy of `rank >= 4` and the one
+     most likely to be missed — widening the other two and leaving this would
+     give a store where a Team Leader can be given an evaluation on one screen
+     and not on another. */
+  const leaders = evalAssignPool(team, rankOf);
 
   return (
     <div style={S.body}>
@@ -6528,7 +6609,7 @@ function SentDocsView({ sends, team, statusOf, onDelete, onUndoAck, onBack }) {
               </button>
               {open && (
                 <div style={{ padding: "0 13px 12px" }}>
-                  {s.driveUrl && <a href={s.driveUrl} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginBottom: 8, fontSize: 12, fontWeight: 700, color: "#1D5FA8", textDecoration: "none" }}>📎 Open document</a>}
+                  {hasHrDoc(s) && <button onClick={() => openHrDoc(s)} style={{ all: "unset", cursor: "pointer", display: "inline-block", marginBottom: 8, fontSize: 12, fontWeight: 700, color: "#1D5FA8" }}>📎 Open document</button>}
                   <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
                     {targets.map((id) => {
                       const a = acks[id];
@@ -6716,9 +6797,18 @@ function SopDocForm({ doc, onCancel, onSave }) {
   const [f, setF] = useState(() => ({
     id: (doc && doc.id) || "", title: (doc && doc.title) || "", category: (doc && doc.category) || "General",
     body: (doc && doc.body) || "", attachName: (doc && doc.attachName) || "", attachUrl: (doc && doc.attachUrl) || "",
+    /* ★ A FILE HELD IN THE HUB, not a link to somewhere else. Bri, Aug 14 and
+       again Aug 19 2026: "can we please have a local upload option when adding
+       new docs? It shows it pulls internally from Docs, but we no longer have
+       this space and need to add new docs for the team to sign."
+       ⚠️ BOTH SHAPES LIVE SIDE BY SIDE ON PURPOSE. Every document already in
+       the library has an `attachUrl` and no file, and those must keep opening
+       exactly as they do. A document has a link, OR a file, OR neither. */
+    docBucket: (doc && doc.docBucket) || "", docPath: (doc && doc.docPath) || "",
     signRequired: !!(doc && doc.signRequired), createdAt: (doc && doc.createdAt) || "",
   }));
   const [err, setErr] = useState("");
+  const [upBusy, setUpBusy] = useState(false);
   // ⚠️ value captured BEFORE the updater — see the prep-work bug in Leadership101.
   const set = (k) => (e) => { const v = e.target.type === "checkbox" ? e.target.checked : e.target.value; setF((p) => ({ ...p, [k]: v })); };
   const lbl = { fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: ".04em", margin: "9px 0 3px" };
@@ -6733,6 +6823,46 @@ function SopDocForm({ doc, onCancel, onSave }) {
       <div style={lbl}>Body — what someone sees, and signs against if acknowledgement is required</div>
       <textarea style={{ ...inp, minHeight: 70, resize: "vertical" }} value={f.body} onChange={set("body")}
         placeholder="By signing below I acknowledge that I have read and understand this policy." />
+      <div style={lbl}>The document</div>
+      {f.docPath ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", border: "1px solid #A7F3D0", background: "#ECFDF5", borderRadius: 8, padding: "8px 10px" }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: "#065F46" }}>📎 {f.attachName || "Uploaded file"}</span>
+          <span style={{ fontSize: 11.5, color: "#047857" }}>held in the Hub</span>
+          {/* ⚠️ REMOVING IT HERE CLEARS THE LINK ONLY. The file stays in storage
+              until the document itself is deleted, so a mis-tap is recoverable
+              rather than a permanent loss. Same rule as the class images. */}
+          <button style={{ ...S.sec, marginLeft: "auto", padding: "4px 9px", fontSize: 12 }}
+            onClick={() => setF((prev) => ({ ...prev, docBucket: "", docPath: "" }))}>Remove</button>
+        </div>
+      ) : (
+        <label style={{ display: "inline-block", cursor: upBusy ? "default" : "pointer", border: "1px dashed #C7D2FE", background: "#F8FAFF", borderRadius: 8, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, color: "#223C6A" }}>
+          {upBusy ? "Uploading…" : "Upload a file from this device"}
+          <input type="file" style={{ display: "none" }} disabled={upBusy}
+            onChange={async (e) => {
+              const file = e.target.files && e.target.files[0];
+              e.target.value = "";
+              if (!file) return;
+              setErr(""); setUpBusy(true);
+              try {
+                /* ⚠️ THE PATH IS UNIQUE PER UPLOAD, never per document. Re-uploading
+                   must not overwrite the file people have already signed against —
+                   the old one stays readable for anyone holding a signature on it. */
+                const safe = String(file.name || "document").replace(/[^A-Za-z0-9._-]+/g, "-").slice(-60);
+                const rec = await uploadDoc(DOC_BUCKET_SOP, `sop/${Date.now().toString(36)}-${safe}`, file);
+                setF((prev) => ({ ...prev, docBucket: rec.bucket, docPath: rec.path,
+                  attachName: prev.attachName || file.name || "Document" }));
+              } catch (ex) {
+                setErr((ex && ex.message) || "That file did not upload.");
+              }
+              setUpBusy(false);
+            }} />
+        </label>
+      )}
+      <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 3, lineHeight: 1.4 }}>
+        A file uploaded here is stored in the Hub and opens through a short-lived link, so it is
+        never a public address anyone can pass on. Use the link field below instead if the document
+        already lives somewhere the team can open.
+      </div>
       <div style={lbl}>Link text</div>
       <input style={inp} value={f.attachName} onChange={set("attachName")} placeholder="Point Performance System" />
       <div style={lbl}>Document link</div>
@@ -6812,15 +6942,17 @@ function SopLibrary({ docs, onBack, canSend, canManage, onSaveDoc, onDeleteDoc, 
                           {d.body.length > 160 ? d.body.slice(0, 160) + "…" : d.body}
                         </div>
                       )}
-                      {d.attachUrl ? (
-                        <a href={d.attachUrl} target="_blank" rel="noreferrer"
-                          style={{ display: "inline-block", marginTop: 8, fontSize: 12, fontWeight: 700, color: "#1D5FA8", textDecoration: "none" }}>
-                          📎 {d.attachName || "Open document"}
-                        </a>
+                      {hasHrDoc(d) ? (
+                        /* ⚠️ A BUTTON, NOT AN ANCHOR, because a file held in the Hub has
+                           no address until it is asked for. openHrDoc handles both. */
+                        <button onClick={() => openHrDoc(d)}
+                          style={{ all: "unset", cursor: "pointer", display: "inline-block", marginTop: 8, fontSize: 12, fontWeight: 700, color: "#1D5FA8" }}>
+                          📎 {d.attachName || "Open document"}{d.docPath ? " · in the Hub" : ""}
+                        </button>
                       ) : d.attachName ? (
-                        <div style={{ marginTop: 8, fontSize: 12, color: "#9CA3AF" }}>📎 {d.attachName} (no link)</div>
+                        <div style={{ marginTop: 8, fontSize: 12, color: "#9CA3AF" }}>📎 {d.attachName} (no file or link)</div>
                       ) : (
-                        <div style={{ marginTop: 8, fontSize: 12, color: "#9CA3AF", fontStyle: "italic" }}>No Drive link on this document</div>
+                        <div style={{ marginTop: 8, fontSize: 12, color: "#9CA3AF", fontStyle: "italic" }}>Nothing attached to this document yet</div>
                       )}
                       {canManage && (editing && editing.id === d.id ? (
                         <SopDocForm doc={d} onCancel={() => setEditing(null)} onSave={(x) => { const r = onSaveDoc(x); if (r && r.ok) setEditing(null); return r; }} />
