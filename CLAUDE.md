@@ -1,5 +1,36 @@
 # SET-THIS-TO-THE-STORE-NAME Hub — project rules
 
+## ⛔⛔ `App.jsx` NEVER INDEXES THE RAW RANK MAP — Aug 19 2026
+
+`HR_RANK_BY_TITLE` is the **built-in ladder only**. `hrRankOfTitle` is that
+ladder **plus** the titles a store has named for itself in `hr.extraTitles`.
+
+Until Aug 19 `App.jsx` read the raw map in **five** places, so at a store that
+names its own roles a Kitchen Director scored rank 0 and got the **team member
+Hub** while HR Console said leader. Nothing errored and nothing showed in a diff.
+It is the reported Village symptom, *"they sign in and see almost nothing."*
+
+⭐ **THE WHOLE FEATURE WAS MISSING HERE AND WAS PORTED THE SAME DAY.** This repo
+is the pre-staged next store, so the gap would have shipped to store four. Four
+pieces landed: `OPEN_KEY_MAPS` in the settings merge (without it a store's own
+titles were **silently deleted on load**, because `mergeDeep` drops keys the
+defaults do not know), the empty `hr.extraTitles` section, `extraTitleRanks()`
+capped at rank 5, and the `hrRankOfTitle` fallback.
+
+⇒ `storeTitleTier.test.mjs` fails if any raw-map index comes back. It travels
+with the fix and says **NOT GRADED** out loud where the store-titles feature does
+not exist, rather than passing on an absence.
+
+⚠️ **IT WIDENS NOTHING.** Unknown is still rank 0 and 0 is still tier 1, so a
+typo still fails closed. The built-in map still wins over a store's list, so a
+store may add a name the Hub does not have but can never redefine one it does.
+
+⚠️ **THIS FIX CAME FROM THE ORIGIN AND IS IN ALL FOUR REPOS.** If you find
+yourself fixing it again in one repo, stop — it is already done, and a fix living
+in one clone is the drift this whole project keeps being bitten by.
+
+---
+
 ## 🛑 READ THIS FIRST
 
 This repo is a **scrubbed snapshot** of another Chick-fil-A's Hub, taken as ONE
