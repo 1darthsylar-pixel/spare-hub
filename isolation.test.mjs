@@ -55,6 +55,12 @@ const FOREIGN = [
   ["The Village's web address", "northelmvillage.com"],
   ["Gate City's store number", "04010"],
   ["The Village's store number", "01818"],
+  /* ⚠️ ADDED Aug 19 2026 WITH THE PORT TO THE VILLAGE AND GUILFORD. The list
+     had two stores in it and there are four repos. A store missing from here is
+     a store this test cannot notice a leak of.
+     ⚠️ Guilford has no web address yet — `identity.domain` is still the
+     placeholder — so only the number goes in. Add the domain when it is set. */
+  ["Guilford's store number", "00746"],
 ];
 
 /* ⚠️⚠️ A STORE NUMBER IS NOT AN ADDRESS, AND SECTION 1 STOPPED FAILING ON ONE.
@@ -143,8 +149,20 @@ group("1. no other store's address is anywhere in this repo");
   t(`code survived comment-stripping (${Math.round(liveBytes / 1024)}kb)`, liveBytes > 200_000);
   /* Second control: this store's OWN marker must be found, or the scan is
      looking at something that is not this snapshot. */
-  const ownFound = [...bodies.values()].some((b) => b.includes("SET-THIS-TO-THE-NEW-STORE-SUPABASE-PROJECT") || b.includes("demo.backline-ops.com"));
-  t("this store's own address was found (control)", ownFound);
+  /* ⚠️⚠️ THIS CONTROL ASSUMED EVERY NON-ORIGIN REPO IS AN UNCONFIGURED DEMO,
+     and it stopped being true the day a clone went live. It looked only for the
+     clone script's placeholder or the demo address — neither of which a real
+     configured store has — so porting this file to the Village failed it on a
+     repo with nothing wrong. ⇒ The marker is THIS STORE'S OWN IDENTITY,
+     whatever state it is in: its real web address once set, and the
+     unconfigured markers while it is not. */
+  const OWN_MARKERS = [
+    /^SET-THIS-TO-/.test(OWN_DOMAIN) ? "" : OWN_DOMAIN,
+    "SET-THIS-TO-THE-NEW-STORE-SUPABASE-PROJECT",
+    "demo.backline-ops.com",
+  ].filter(Boolean);
+  const ownFound = [...bodies.values()].some((b) => OWN_MARKERS.some((m) => b.includes(m)));
+  t(`this store's own marker was found (control: ${OWN_MARKERS[0]})`, ownFound);
 
   /* ⚠️ MARKDOWN IS PROSE END TO END, so it is reported and not failed on, for
      exactly the reason comments are stripped above. A `.md` file cannot reach
@@ -293,10 +311,22 @@ group("4. the address comes only from the environment");
     t("origin: its own project is configured (control)",
       /https:\/\/[a-z0-9-]{15,}\.supabase\.co/.test(w));
   } else {
-    t("no real supabase.co host is hardcoded anywhere in it",
-      !/https:\/\/[a-z0-9-]{15,}\.supabase\.co/.test(w));
-    t("the placeholder IS there instead (control)",
-      /SET-THIS-TO-THE-NEW-STORE-SUPABASE-PROJECT\.supabase\.co/.test(w));
+    /* ⚠️⚠️ THIS USED TO DEMAND THAT A CLONE HAVE NO REAL HOST AT ALL, WHICH IS
+       ONLY TRUE OF A CLONE NOBODY HAS SET UP YET. The Village is a live store
+       with its own Supabase project, so it failed a rule that was really
+       measuring "has this repo been configured", not "is this repo isolated".
+       ⇒ AND IT WAS A SECOND MECHANISM FOR SECTION 1'S JOB. Section 1 already
+       walks the whole tree for every foreign project ref and passes. Two
+       mechanisms for one fact, and this is the one that drifted.
+       ⇒ WHAT ACTUALLY MATTERS, at every store and in every state: a hardcoded
+       host must be THIS store's, and there must only be one of them. */
+    const hosts = [...new Set(w.match(/https:\/\/[a-z0-9-]{15,}\.supabase\.co/g) || [])];
+    const placeholder = /SET-THIS-TO-THE-NEW-STORE-SUPABASE-PROJECT\.supabase\.co/.test(w);
+    t(`either it is unset or it has one project of its own (control: ${placeholder ? "placeholder" : hosts.length + " host(s)"})`,
+      placeholder || hosts.length > 0);
+    t("no hardcoded host belongs to a store this one is not",
+      !hosts.some((h) => NOT_MINE.some(([, v]) => h.includes(v))));
+    t(`it names at most one database (${hosts.length})`, hosts.length <= 1);
   }
 }
 
