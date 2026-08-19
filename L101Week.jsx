@@ -12,6 +12,10 @@ import { INSTRUCTOR_WEEKS, ASSIGN_KEY, loadAssignments, isAssigned, loadEligible
    A const would capture "Bri" at import, before a store's saved settings are
    merged, and every one of these five sentences would name her forever. */
 import { courseOwnerLabel, courseOwnerLabelCap, STORE } from "./storeConfig.js";
+/* ★ THE QUIZ RULES A STUDENT MEETS, and the instructor answer key Bri asked for
+   on Aug 19 2026. Out here rather than inline because this file is a .jsx and
+   nothing in checks/ can execute one. */
+import { isMulti as quizIsMulti, questionsOf, letterFor, answerKeyOf, unsetCount } from "./l101QuizPlay.js";
 
 /**
  * L101Week — the Leadership 101 class RENDERER, with no content of its own.
@@ -387,9 +391,10 @@ function MatchItem({ item, P, instructor }) {
 }
 
 // ── QUIZ ──────────────────────────────────────────────
-function QuizItem({ item, P }) {
+function QuizItem({ item, P, instructor }) {
   const [picked, setPicked] = useState({});
   const [graded, setGraded] = useState(false);
+  const [peek, setPeek] = useState(false);   // INSTRUCTOR-ONLY key, shut by default
   // Recorded the moment it grades — the score AND, since Jul 27, what they
   // actually picked. Bri: "I still can't see the answers they've given for
   // quizzes." Nothing but the number was ever stored; `picked` lived here and
@@ -399,12 +404,12 @@ function QuizItem({ item, P }) {
   // render, which is exactly the temporal-dead-zone crash that blanked this
   // class in July. The callback runs after render, so the binding is live.
   useEffect(() => {
-    if (graded && P) P.saveQuiz(item.id, score, item.questions.length, item.title, responses);
+    if (graded && P) P.saveQuiz(item.id, score, questionList.length, item.title, responses);
   }, [graded]);
   // A question is either single-answer (`answer`) or select-all (`answers`).
   // Week 4 Quiz 1 Q5 is the only multi in either quiz, but the shape has to
   // support both or that question can never be answered correctly.
-  const isMulti = (q) => Array.isArray(q.answers);
+  const isMulti = quizIsMulti;   // one definition, in l101QuizPlay.js
   const pickedSet = (qi) => (picked[qi] instanceof Set ? picked[qi] : new Set());
   /* ⚠️ SAME GUARD AS THE TWO READS BELOW, WHICH ALREADY HAVE IT. These two ran
      bare while lines 393 and 416 guarded the identical field, and both of these
@@ -455,12 +460,13 @@ function QuizItem({ item, P }) {
     }),
     [picked, item.questions]
   );
-  const letters = ["a", "b", "c", "d"];
+  /* 🐛 THIS WAS `["a","b","c","d"]` AND THE EDITOR HAS NO CAP ON CHOICES, so a
+     fifth choice rendered with a BLANK letter. letterFor goes to z, then aa. */
   return (
     <div style={{ display: "grid", gap: 14 }}>
       {/* Not reachable from the editor today (quizzes aren't addable there),
           but a quiz with no questions must not take the class down with it. */}
-      {(Array.isArray(item.questions) ? item.questions : []).map((q, qi) => (
+      {questionList.map((q, qi) => (
         <div key={qi} style={{ display: "grid", gap: 8 }}>
           <p style={{ margin: 0, fontSize: 14.5, color: C.ink, fontWeight: 600, lineHeight: 1.45 }}>
             <span style={{ fontFamily: font.mono, color: C.sub, marginRight: 8 }}>{qi + 1}</span>
@@ -492,7 +498,7 @@ function QuizItem({ item, P }) {
                     display: "flex", gap: 10, alignItems: "flex-start", padding: "9px 12px",
                     borderRadius: 9, border: `1.5px solid ${bd}`, background: bg, color: fg,
                     fontFamily: font.body, fontSize: 13.5 }}>
-                  <span style={{ fontFamily: font.mono, fontWeight: 700, opacity: 0.7 }}>{letters[ci]}</span>
+                  <span style={{ fontFamily: font.mono, fontWeight: 700, opacity: 0.7 }}>{letterFor(ci)}</span>
                   <span>{c}</span>
                   {correct && <span style={{ marginLeft: "auto" }}>✓</span>}
                   {wrongPick && <span style={{ marginLeft: "auto" }}>✕</span>}
@@ -505,16 +511,16 @@ function QuizItem({ item, P }) {
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         {!graded ? (
           <button onClick={() => setGraded(true)}
-            disabled={answeredCount < item.questions.length}
+            disabled={answeredCount < questionList.length}
             style={{ ...btn(C.green, "#fff"),
-              opacity: answeredCount < item.questions.length ? 0.5 : 1 }}>
+              opacity: answeredCount < questionList.length ? 0.5 : 1 }}>
             Submit quiz
           </button>
         ) : (
           <>
             <span style={{ fontFamily: font.mono, fontSize: 15, fontWeight: 700,
-              color: score === item.questions.length ? C.green : C.ink }}>
-              {score} / {item.questions.length} correct
+              color: score === questionList.length ? C.green : C.ink }}>
+              {score} / {questionList.length} correct
             </span>
             <button onClick={() => { setGraded(false); setPicked({}); }} style={btn(C.paper, C.ink, C.line)}>
               Try again
@@ -522,8 +528,61 @@ function QuizItem({ item, P }) {
           </>
         )}
       </div>
-      <p style={{ margin: 0, fontSize: 12, color: C.sub, fontStyle: "italic" }}>
-      </p>
+      {/* ══════════════════════════════════════════════════════════════════
+          THE INSTRUCTOR ANSWER KEY. Bri, Aug 19 2026: "Instructors need to have
+          answer keys visible on their view."
+
+          The matching game has had one since July. A quiz never did — this was
+          the only activity with a right answer that was not even handed the
+          `instructor` flag, so there was nothing to render.
+
+          ⚠️ SAME GATE AS MatchItem, AND THE SAME HONEST LIMIT. It keeps the key
+          off a student's SCREEN. The answers ride in the course content and the
+          course content is what the student's browser downloads, which is
+          exactly why L101W2's fill-in-the-blanks are `qa` and never `quiz`.
+          A key that has to be secret has to be checked server-side, and that is
+          a different build. Do not let this comment drift into claiming more.
+
+          ⚠️ IT STAYS SHUT UNTIL ASKED FOR, so an instructor can sit the quiz
+          themselves — Bri does exactly this to see the class as a student — and
+          share the screen without the answers on it.
+          ══════════════════════════════════════════════════════════════════ */}
+      {instructor && questionList.length > 0 && (
+        <div>
+          <button onClick={() => setPeek((v) => !v)} style={btn("#7D2AE8", "#fff")}>
+            {peek ? "Hide answer key" : "Show answer key"}
+          </button>
+          <span style={{ marginLeft: 10, fontSize: 12, color: C.sub, fontStyle: "italic" }}>
+            (only you can see this)
+          </span>
+          {peek && (
+            <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+              {/* ⚠️ AN UNMARKED QUESTION IS SAID OUT LOUD. A key that just prints
+                  nothing for question 4 reads as "no answer", not "unfinished". */}
+              {unsetCount(item) > 0 && (
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: C.amber }}>
+                  {unsetCount(item)} question{unsetCount(item) === 1 ? " has" : "s have"} no answer marked yet.
+                </div>
+              )}
+              {answerKeyOf(item).map((k) => (
+                <div key={k.n} style={{ fontSize: 12.5, color: C.sub, lineHeight: 1.45 }}>
+                  <span style={{ fontFamily: font.mono, fontWeight: 700 }}>{k.n}.</span>{" "}
+                  {k.unset ? (
+                    <span style={{ color: C.amber, fontWeight: 700 }}>not marked yet</span>
+                  ) : (
+                    <>
+                      <span style={{ fontFamily: font.mono, fontWeight: 700 }}>{k.letters.join(", ")}</span>
+                      {" — "}
+                      <span style={{ color: C.ink }}>{k.correct.join(" · ")}</span>
+                      {k.multi && <span style={{ fontStyle: "italic" }}> (all of these)</span>}
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -827,7 +886,7 @@ function ItemBody({ item, P, instructor }) {
     case "read": return <ReadItem item={item} />;
     case "qa": return <QaItem item={item} P={P} />;
     case "match": return <MatchItem item={item} P={P} instructor={instructor} />;
-    case "quiz": return <QuizItem item={item} P={P} />;
+    case "quiz": return <QuizItem item={item} P={P} instructor={instructor} />;
     case "assign": return <AssignItem item={item} P={P} />;
     case "upload": return <UploadItem item={item} P={P} />;
     case "walk": return <WalkItem item={item} P={P} />;
