@@ -1,3 +1,4 @@
+import { chaseDue, owedByPerson, chaseTitle, chaseBody } from "./docChase.js";
 import { trainerTaskFallback, trainerTasksPeriodBounds } from "./trainerTaskRoster.js";
 import { buildDailyDigest, buildLeaderDigest, readDigest, readLeaderDigest, MODEL as CLAUDE_MODEL } from "./aiSummary.js";
 import { runEosTouchIn } from "./eosTouchIn.js";
@@ -3782,6 +3783,115 @@ async function runPgReminders(env) {
   return { checked: idx.length, sent, noSlackId, date: today };
 }
 
+/* ⚠️⚠️ WHETHER THIS STORE CAN SEND A SLACK DM AT ALL, SAID OUT LOUD.
+   `dmPerson` exists at some stores and not others — Guilford and the spare
+   template have the Hub's own push and no Slack helper — and worker.js travels
+   to every one of them. A `typeof dmPerson === "function"` guard reads as
+   careful and is not: the scope check cannot see through it, so it reports an
+   undefined name in exactly the repos where the name really is undefined, and
+   the honest answer is to stop pretending the two stores are the same file.
+   ⇒ ONE LINE PER STORE, VISIBLE IN A DIFF. A store with Slack points this at
+   its sender; a store without leaves it null and the chase reaches people
+   through the Hub's own push, which every store has.
+   ⚠️ NOT A FALLBACK CHAIN. The push is tried first everywhere and Slack is the
+   second arm, so null here costs the people who have no device registered and
+   nobody else. */
+const chaseDm = null;
+
+/* ══════════════════════════════════════════════════════════════════════════
+   doc-chase — ONE REMINDER, TWO DAYS LATER, TO ANYONE WHO HAS NOT SIGNED.
+
+   Bri, Aug 14 2026: "Please alert from SOP when docs are sent to sign and send
+   a second notification after 2 days for any sent that are not signed." The
+   first alert already goes out at send time. This is the second one.
+
+   ⚠️⚠️ ONE CHASE PER SEND, NOT ONE PER DAY. `chasedAt` is stamped on the record
+   and a stamped record is skipped forever after. A daily job over an unsigned
+   pile is how a reminder becomes noise people mute, and a muted reminder is
+   worse than none because everyone believes it is working.
+
+   ⚠️⚠️ A REFUSED READ MUST NOT LOOK LIKE AN EMPTY ONE. `sbGet` answers null for
+   "no key" and for "Supabase said no" alike, and treating a refusal as "nothing
+   outstanding" means this job reports a clean run on the day it is blindest.
+   `sbGetStrict` throws instead, and the throw aborts before anything is
+   stamped — so nothing is marked chased that was never chased.
+
+   ⚠️ IT WRITES THE STAMPS ONCE, AT THE END, AND ONLY IF SOMETHING WAS SENT. A
+   write per person would mean a mid-run failure leaves half the people chased
+   and the record saying they all were.
+   ⚠️ AND IT RE-READS BEFORE WRITING. Somebody may have signed while this ran;
+   writing back the list we started with would erase their acknowledgment. Only
+   the `chasedAt` field is carried over onto the fresh copy. */
+async function runDocChase(env) {
+  const sends = await sbGetStrict(env, "gcfcr-hr-docsends-v1");
+  const list = Array.isArray(sends) ? sends : [];
+  if (!list.length) return { checked: 0, chased: 0, people: 0, noReach: 0 };
+
+  /* ⚠️ THE TWO DECISIONS THAT CAN BE WRONG ARE IN docChase.js, not here.
+     Nothing in checks/ can boot a Worker, so a rule written inline is a rule
+     nobody can prove. What is left in this function is reading, sending and
+     stamping. */
+  const due = chaseDue(list, Date.now());
+  if (!due.length) return { checked: list.length, chased: 0, people: 0, noReach: 0 };
+
+  /* id -> name, from the roster the Worker can actually read. bareId because
+     this store carries two id formats for one person and it is the house bug. */
+  const names = new Map();
+  try {
+    const roster = await sbGet(env, "gcfcr-hr-team-v1");
+    if (Array.isArray(roster)) for (const m of roster) {
+      if (m && m.id && m.name) names.set(bareId(m.id), String(m.name));
+    }
+  } catch { /* unreadable roster: push by id alone still reaches a subscriber */ }
+
+  const owedBy = owedByPerson(due);
+
+  let people = 0, noReach = 0;
+  for (const [id, titles] of owedBy) {
+    const name = names.get(bareId(id)) || "";
+    /* ⚠️ ONE SET OF WORDS FOR BOTH ARMS. A push and a Slack DM describing the
+       same debt differently is how somebody opens the Hub looking for two
+       documents and finds one. */
+    const body = chaseBody(titles);
+    let reached = false;
+    /* ⚠️ EACH ARM IN ITS OWN TRY. A failed DM must not stop the push, and
+       neither must stop the other people in this loop. */
+    try {
+      const r = await pushToPerson(env, name, {
+        title: chaseTitle(titles.length),
+        body: `${body} Open HR Console and look at your own file.`,
+        url: "/",
+      }, id);
+      if (Number((r && r.sent) || 0) > 0) reached = true;
+    } catch { /* reached stays false */ }
+    /* ⚠️ THE SECOND ARM, AND ONLY WHERE THERE IS ONE. See chaseDm above.
+       Nothing is silently skipped: somebody neither arm reached counts in
+       `noReach`, and noReach is what stops the record being stamped chased. */
+    if (name && chaseDm) {
+      try {
+        const r = await chaseDm(env, { name },
+          `*${chaseTitle(titles.length)}*\n${titles.map((t) => "• " + t).join("\n")}\nHR Console, your own file.`,
+          { title: "Documents to sign" });
+        if (r && r.reached) reached = true;
+      } catch { /* reached stays false */ }
+    }
+    if (reached) people++; else noReach++;
+  }
+
+  /* ⚠️ NOTHING SENT MEANS NOTHING STAMPED. If every person was unreachable the
+     chase has not happened, and marking it done would retire a reminder that
+     was never delivered. */
+  if (!people) return { checked: list.length, chased: 0, people: 0, noReach };
+
+  const stampAt = new Date().toISOString();
+  const chasedIds = new Set(due.map((r) => String(r.id)));
+  const fresh = await sbGetStrict(env, "gcfcr-hr-docsends-v1");
+  if (!Array.isArray(fresh)) return { checked: list.length, chased: 0, people, noReach, stamp: "skipped" };
+  await sbSet(env, "gcfcr-hr-docsends-v1",
+    fresh.map((r) => (r && chasedIds.has(String(r.id)) ? { ...r, chasedAt: stampAt } : r)));
+  return { checked: list.length, chased: due.length, people, noReach };
+}
+
 async function runEvalDueReminders(env) {
   const tasks = (await sbGet(env, EVAL_TASK_KEY)) || [];
   if (!Array.isArray(tasks) || !tasks.length) return { checked: 0, sent: 0, noSlackId: 0 };
@@ -5097,6 +5207,7 @@ async function sweepCopyOut(env, subject, text) {
    name missing here can never stop a job running. */
 const KNOWN_JOBS = [
   "adoption-check", "ai-summary", "audit-order-calc", "boilout-fry",
+  "doc-chase",
   "boilout-henny", "cleaning-summary", "emails-migrate", "eos",
   "equip-reminder-flag", "eval-due-reminders", "foodsafety-assign",
   "foodsafety-reminder", "foodsafety-weekly", "gap-check", "goal-due",
@@ -9780,6 +9891,7 @@ export default {
         else if (job === "goal-due") { const r = await runGoalDueReminders(env); return Response.json({ ok: true, ran: job, ...(r || {}) }); }
         else if (job === "foodsafety-assign") { const r = await runFoodSafetyAssign(env); return Response.json({ ok: true, ran: job, ...r }); }
         else if (job === "eval-due-reminders") { const r = await runEvalDueReminders(env); return Response.json({ ok: true, ran: job, ...r }); }
+        else if (job === "doc-chase") { const r = await runDocChase(env); return Response.json({ ok: true, ran: job, ...r }); }
         else if (job === "foodsafety-reminder") await runFoodSafetyReminder(env);
         else if (job === "foodsafety-weekly") {
           /* ★★ A WEEKLY REPORT MUST REFUSE TO POST DAILY.
@@ -11728,6 +11840,58 @@ export default {
        ⚠️ NEVER WRITES OFF A READ IT DOES NOT TRUST. A missing or non-array
        sends list means the read failed or the key is gone; writing then would
        replace the whole acknowledgment trail with one record. It refuses. */
+    /* ══════════════════════════════════════════════════════════════════════
+       /api/my-docs — WHAT AM I STILL BEING ASKED TO SIGN?
+
+       ⛔ WHY IT HAS TO BE A ROUTE. Bri, Aug 17 2026 and again Aug 19: "I sent an
+       SOP document to sign. Nobody can see it... I don't know where these are
+       going right now." The document really was sent and the signing really did
+       work. Nothing told the person it was waiting, so nobody went to look.
+
+       ⇒ The obvious fix is a count on the home screen, and the home screen
+       cannot have one: `gcfcr-hr-docsends-v1` is on HR_PROTECTED, so the ~106
+       people who need the count are exactly the ones who cannot read the key.
+       This answers the one question they may ask about themselves, resolved
+       from their token, and returns nothing about anybody else.
+
+       ⚠️⚠️ IT LEAKS NO ROSTER. The reply carries only rows this person is a
+       target of, and only the title and the date. No target list, no
+       acknowledgment map, no other person's name — a team member must not be
+       able to work out who else has or has not signed something.
+       ⚠️ A FAILED READ IS NOT AN EMPTY ONE. `ok: false` on an unreadable key,
+       so the screen can stay silent instead of telling somebody they owe
+       nothing. Saying "you are all clear" off a dropped read is the lie this
+       whole area already has a history of.
+       ⚠️ GET, AND IT WRITES NOTHING. Reading what you owe must never be the
+       thing that records it. */
+    if (url.pathname === "/api/my-docs" && request.method === "GET") {
+      try {
+        const tok = await readToken(env, request.headers.get("x-hub-token"));
+        if (!tok) return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
+        const uid = String(tok.u || "");
+        if (!uid) return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
+
+        const sends = await sbGetStrict(env, "gcfcr-hr-docsends-v1").catch(() => undefined);
+        /* undefined = the read was refused. null = the key genuinely is not
+           there yet, which means nothing has ever been sent and "you owe
+           nothing" is the true answer. The two must not collapse. */
+        if (sends === undefined) return Response.json({ ok: false, error: "unreadable" }, { status: 503 });
+        const list = Array.isArray(sends) ? sends : [];
+
+        const owed = list.filter((r) => r && r.signRequired
+          && Array.isArray(r.targetIds) && r.targetIds.map(String).includes(uid)
+          && !(r.acks && typeof r.acks === "object" && r.acks[uid]))
+          .map((r) => ({
+            id: String(r.id || ""),
+            title: String(r.docTitle || "Untitled document"),
+            sentAt: String(r.createdAt || ""),
+          }));
+        return Response.json({ ok: true, count: owed.length, docs: owed });
+      } catch (e) {
+        return Response.json({ ok: false, error: String(e) }, { status: 500 });
+      }
+    }
+
     if (url.pathname === "/api/doc-ack" && request.method === "POST") {
       try {
         const tok = await readToken(env, request.headers.get("x-hub-token"));

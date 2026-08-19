@@ -2550,6 +2550,31 @@ export default function App() {
     } catch { if (live) setGoalsDue(0); }
   })(); return () => { live = false; }; }, [user]);
 
+/* ── DOCUMENTS THIS PERSON HAS BEEN ASKED TO SIGN ────────────────────────
+     Bri, Aug 17 2026 and again Aug 19: "I sent an SOP document to sign. Nobody
+     can see it... I don't know where these are going right now."
+
+     The document really was sent and the signing really did work. Nothing told
+     the person it was waiting, so nobody went to look. This is what tells them.
+
+     ⚠️⚠️ IT GOES THROUGH /api/my-docs AND CANNOT READ THE KEY DIRECTLY.
+     `gcfcr-hr-docsends-v1` is on HR_PROTECTED, so the ~106 people who need this
+     count are exactly the people who may not read it. The route answers only
+     for the person holding the token and returns nobody else's row.
+     ⚠️ ZERO ON ANY FAILURE, the same rule goalsDue states above. A red number on
+     a hundred home screens off a dropped read is worse than no number.
+     ⚠️ AND SILENT IS NOT "ALL CLEAR" — the route distinguishes a refused read
+     from an empty one, and both land here as zero on purpose, because the home
+     screen is not the place to report that a database is unreachable. */
+  const [docsToSign, setDocsToSign] = useState(0);
+  useEffect(() => { let live = true; (async () => {
+    if (!user || !user.id) { if (live) setDocsToSign(0); return; }
+    try {
+      const r = await fetch("/api/my-docs", { headers: { "x-hub-token": hubToken() } }).then((x) => x.json());
+      if (live) setDocsToSign(r && r.ok && Number.isFinite(Number(r.count)) ? Number(r.count) : 0);
+    } catch { if (live) setDocsToSign(0); }
+  })(); return () => { live = false; }; }, [user]);
+
   const [pendingRecs, setPendingRecs] = useState(0);
   useEffect(() => { let live = true; (async () => {
     if (!user || !user.name) { if (live) setPendingRecs(0); return; }
@@ -3606,6 +3631,13 @@ export default function App() {
     /* Both counts ride the same tile and for the same reason — Assistant
        Directors are tier 2, so anything below the gate never reaches them. */
     if (id === "teamsite" && (pendingRecs > 0 || goalsDue > 0)) return pendingRecs + goalsDue;
+    /* ⚠️⚠️ ABOVE THE TIER GATE, and this is the third time this file has had to
+       say so. A document sent for signature goes to EVERYBODY — the HR Console
+       tile is tier 1 for exactly that reason ("View your profile and set your
+       PIN") — so putting this below `tier < 3` would hide the badge from every
+       single person it exists for and leave it showing only to the five people
+       who sent the thing. */
+    if (id === "hr" && docsToSign > 0) return docsToSign + (tier >= 3 ? pulse.handbookUnsigned + pulse.evalsDue : 0);
     if (tier < 3) return 0;
     if (id === "hr") return pulse.handbookUnsigned + pulse.evalsDue;
     return 0;
@@ -4838,6 +4870,18 @@ export default function App() {
                 badge += goalsDue;
                 badgeTone = badgeTone === "red" ? "red" : "amber";
                 signals.push(`${countLabel(goalsDue, "team goal", "team goals")} to submit`);
+              }
+              /* ★ AND A DOCUMENT WAITING FOR A SIGNATURE, on the same trail.
+                 ⚠️ RED, NOT AMBER. The other two on this section are work
+                 somebody owes by a date. This one is a policy they have been
+                 asked to read and have not, which is the one on this screen
+                 that can matter to the store rather than only to them.
+                 ⚠️ OUTSIDE THE TIER GATE, same as the two above and for a
+                 stronger reason: this reaches every tier there is. */
+              if (section.icon === "sec:people" && docsToSign > 0) {
+                badge += docsToSign;
+                badgeTone = "red";
+                signals.push(`${countLabel(docsToSign, "document", "documents")} to sign`);
               }
               if (section.icon === "sec:money" && tier >= 3 && daily) {
                 badge = (!daily.sales ? 1 : 0) + (!daily.hours ? 1 : 0) + (!daily.giveaways ? 1 : 0) + ((daily.gvZeroSides || []).length ? 1 : 0) + (daily.eomYm ? 1 : 0) + (daily.guestYm ? 1 : 0);
