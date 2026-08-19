@@ -143,6 +143,26 @@ founder holding team-member access and the setup route already spent.
 
 ⇒ **The Operator's Hub title is `Owner`.** Tell them; do not just ask.
 
+### 🐛 THE HUB SCHEDULE PULL LOOKED UP THE WRONG DAY — Aug 19 2026
+
+Found at Gate City from a Fable audit finding; this store had the same code.
+
+⛔ `scheduleRowsFor` looked up `sched.days['Monday']` on a week keyed `Mon`, so a
+fully built week answered **"has nobody on Monday"** every day of every week.
+`buildWeek` writes `out[d.day]` and `boardDays` hands it `Mon`…`Sat`;
+`DailySetup`'s `const DAYS` is full names. Two spellings, one lookup, no match.
+
+**Fixed at the cause.** It could not be tested because it lived in a `.jsx` no
+Node test can import. It is now **`setupRows.js`** (leaf, imports nothing) with
+**`setupRows.test.mjs`, 88 assertions**. `dayKeyIn` asks the week what its days
+are called: exact key first, then a three-letter compare — three, because `Sat`
+and `Sun` share two.
+
+⚠️⚠️ **THIS IS THE NEXT STORE'S STARTING POINT, SO IT MATTERS THAT IT SHIPS
+CORRECT.** `HUB_SCHEDULE_PULL_READY` stays `false` here: a new store has no
+built weeks to pull, and the button discards manual board edits. It greys with
+the reason on it and unlocks when that store is running Lineup.
+
 ### HR Console is open by rank here, and that was set deliberately
 
 `HR_CONSOLE_OPEN_BY_RANK` is **`true`** in `storeConfig.js`. The snapshot set it,

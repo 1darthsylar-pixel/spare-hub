@@ -31,6 +31,11 @@ import { TIME_RANGE_DASH, TIME_RANGE_TWOCLOCK, parseClock, parseRanges } from ".
 /* The key the Schedule tile writes a week under. ONE definition, in the leaf,
    so the writer and this reader can never drift onto different keys. */
 import { scheduleKey } from "./scheduleEngine.js";
+/* ★ THE HUB SCHEDULE, AS IMPORT ROWS — moved out of this file Aug 19 2026 so a
+   Node test can actually execute it. It could not be tested here, and the day
+   lookup inside it had never matched a real saved week. setupRows.js carries
+   the whole finding. */
+import { mapJobToSection, scheduleRowsFor } from "./setupRows.js";
 import { STORE, storeCfg, sectionsOf } from "./storeConfig.js"; // store name on the board header, and the section order the colours index into
 
 /* ============================================================================
@@ -865,27 +870,6 @@ function bohSectionColor(name) {
   return at < 0 ? ACCENT : sectionTint(at);
 }
 
-// HotSchedules job code → BOH section. First match wins; anything unmatched
-// stays roster-only (or FOH, on auto-split). Order matters: specific → general.
-const BOH_JOB_MAP = [
-  { re: /bread/i, section: 'BREADING' },
-  { re: /load|filter|thaw/i, section: 'BREADING' },
-  { re: /fry|fries|hash/i, section: 'FRY STATION' },
-  { re: /machine/i, section: 'MACHINES' },
-  { re: /\bprep\b/i, section: 'PREP' },
-  { re: /truck|receiv/i, section: 'TRUCK / RECEIVING' },
-  { re: /dish|sanit/i, section: 'DISH / SANITATION' },
-  { re: /biscuit|egg|nugget|strip|soup|\bmac\b|secondary/i, section: 'SECONDARY' },
-  { re: /board|sandwich/i, section: 'PRIMARY' },
-  { re: /primary|point|special/i, section: 'PRIMARY' },
-  { re: /kitchen lead|kitchen manager|kitchen mgr/i, section: 'LEADERSHIP' },
-  { re: /\bcook\b|kitchen|\bboh\b|grill/i, section: 'SECONDARY' },
-];
-function mapJobToSection(job) {
-  if (!job) return null;
-  const hit = BOH_JOB_MAP.find((j) => j.re.test(job));
-  return hit ? hit.section : null;
-}
 
 /* ============ KV HELPERS (shared Hub storage) ============ */
 /* ⚠️ A FAILED READ IS NOT AN EMPTY ONE. `readKV` answers null for both, which
@@ -2142,70 +2126,6 @@ function parseImportText(text) {
   });
 }
 
-/* ============ THE HUB SCHEDULE, AS IMPORT ROWS ============
-   Turns a week saved by the Schedule tile into exactly what `parseImportText`
-   produces, so a published week goes down the SAME path a HotSchedules paste
-   does: Preview, Check for changes, Rebuild, the engines, gaps, breaks, undo
-   and history all work with no change at all.
-
-   ⚠️⚠️ THE ROWS CARRY JOB CODES, NOT STATIONS, AND THAT IS THE WHOLE POINT.
-   The Schedule tile can show a position preview, but the board is authoritative
-   on the day: `autoAssignFOH`/`autoAssignBOH` hold the store's locks, the
-   leader-per-daypart rule, the trainer spread and the rotation tiebreak. Handing
-   them a station would be a second engine quietly overruling the real one. They
-   are handed the same thing HotSchedules hands them — who is on, when, and what
-   they are certified to do — and they place people themselves.
-
-   ⚠️⚠️ MINUTES BECOME DECIMAL HOURS HERE, AND THIS IS THE ONLY PLACE IT
-   HAPPENS. Everything in scheduleEngine.js and availability.js is minutes from
-   midnight, to match `stations[...].hours`. Everything on this board and in both
-   engines is decimal hours, because that is what `parseRanges` returns. 570
-   and 9.5 are the same instant. Getting this backwards would put somebody on at
-   half past nine at night instead of half past nine in the morning.
-
-   ⚠️ ONE ROW PER PERSON. A person cannot hold shifts on both sides of one day —
-   the engine shares one `takenToday` set across FOH and BOH for exactly that
-   reason — but this merges by id anyway rather than trusting it, because two
-   rows for one person would place them twice and both boards would look right.
-   ★ MODULE LEVEL AND PURE (design rule 7). */
-function scheduleRowsFor(sched, dayName) {
-  const day = sched && sched.days ? sched.days[dayName] : null;
-  if (!day || !day.sides) return [];
-  const byId = new Map();
-  ['FOH', 'BOH'].forEach((side) => {
-    const shifts = (day.sides[side] && day.sides[side].shifts) || [];
-    shifts.forEach((s) => {
-      if (!s || !s.name) return;
-      const start = Number(s.start) / 60;
-      const end = Number(s.end) / 60;
-      if (!(end > start)) return;          // never emit a zero or backwards shift
-      const job = String(s.job || '');
-      const skill = String(s.skillWord || '');
-      const section = mapJobToSection(job);
-      const block = { start, end, job, skill, section };
-      const key = String(s.id == null ? s.name.toLowerCase() : s.id);
-      const row = byId.get(key);
-      if (row) {
-        row.ranges.push({ start, end });
-        row.blocks.push(block);
-        return;
-      }
-      byId.set(key, {
-        name: s.name,
-        id: s.id == null ? null : String(s.id),
-        ranges: [{ start, end }],
-        blocks: [block],
-        job, skill, section,
-      });
-    });
-  });
-  return [...byId.values()].map((p) => {
-    p.ranges.sort((a, b) => a.start - b.start);
-    p.blocks.sort((a, b) => a.start - b.start);
-    p.hours = p.ranges.reduce((t, r) => t + Math.max(0, r.end - r.start), 0);
-    return p;
-  });
-}
 
 /* ============ EDIT UNLOCK — personal PINs from the HR Console ============
    gcfcr-hr-pins is an object of MEMBER ID → pin (HRConsole.setPinValue).
