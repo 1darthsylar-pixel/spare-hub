@@ -1,0 +1,124 @@
+name: branches
+# ⚠️⚠️ THE DRIFT NOTHING WAS WATCHING. `drift.yml` asks "what is a CLONE behind
+# on". This asks the other question: "what is in THIS repo that `main` cannot
+# see". Both are drift, they fail in opposite directions, and neither catches
+# the other's case.
+#
+# ⛔ MEASURED HERE Aug 19 2026, WHICH IS WHY THIS EXISTS. Four branches sat in
+# this repo and NOT ONE HAD A PULL REQUEST. They held finished, tested work — a
+# training badge bug, a My Shifts date bug, a scheduling lock bug — and nothing
+# automated could see them, reach them, or merge them. `auto-merge` in
+# deploy-window.yml lists OPEN pull requests only, so a branch without one is
+# invisible to the single thing that ships code here.
+#
+# ⛔⛔ AND ONE OF THOSE COMMITS WAS ALREADY ON `main`, BYTE FOR BYTE, written a
+# second time by another session hours apart. It was found by diffing, by hand.
+# CLAUDE.md has warned about exactly that since Aug 13 2026 and the warning was
+# the entire guard. A warning is not a guard. This is the guard.
+#
+# ⚠️ IT NEVER FAILS ON THE FINDINGS, ONLY ON BEING UNABLE TO MEASURE. Branches
+# are normal and a red job every day is a job nobody reads. The one thing it
+# treats as broken is not being able to read the branch list or the pull request
+# list, because a silent empty report reads as "nothing is drifting", which is
+# the most dangerous wrong answer this system can give.
+#
+# ⚠️ AND IT IS SILENT WHEN CLEAN, ON PURPOSE. Nothing is posted on a day with
+# nothing to say. `drift.yml` posts weekly whatever it finds because a trend is
+# the point there; this runs daily, and a daily "all fine" comment is how a
+# tracking issue becomes something Matt scrolls past.
+#
+# ⚠️ fetch-depth: 0 AND THE EXPLICIT FETCH ARE BOTH LOAD-BEARING. The tool needs
+# the MERGE BASE of every branch, and `actions/checkout` gives a shallow tree
+# with only the default branch's refs. Without both lines every branch reports
+# an empty change set, which this tool reads as "already on main" — turning
+# unshipped work into an all-clear.
+#
+# NOTHING TO SET UP. The default token reads this repo's own branches and pull
+# requests, which is all this needs.
+on:
+  schedule:
+    - cron: "0 9 * * *"   # daily, 5:00 AM ET during EDT
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  branches:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch every branch, not just the default one
+        run: |
+          set -euo pipefail
+          git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          # ⚠️ A CONTROL THAT MUST FIND SOMETHING. `main` is always there. A
+          #    fetch that silently brought back nothing would make every later
+          #    step report a clean repo, which is the wrong-directory grep this
+          #    repo's own rules warn about: clean for everything, meaning nothing.
+          git rev-parse --verify origin/main >/dev/null
+
+      - name: Can the pull request list be read at all?
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # ⛔ THE NO PR FINDING IS THE WHOLE REASON THIS JOB EXISTS, and
+          #    branchWatch.mjs deliberately SUPPRESSES it when the list cannot be
+          #    read rather than stamping it on every branch. That is right for a
+          #    laptop with no `gh`. In here it would mean the report quietly
+          #    stopped answering its main question, so this fails instead.
+          gh pr list --state open --json number,headRefName > /tmp/prs.json
+          echo "open pull requests: $(jq 'length' /tmp/prs.json)"
+
+      - name: What is sitting where main cannot see it?
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node branchWatch.mjs | tee /tmp/branches.txt
+          # The findings, one code per line, for the "is there anything to say"
+          # decision below. --summary is the machine half of the same run.
+          node branchWatch.mjs --summary > /tmp/summary.tsv
+          echo "findings: $(wc -l < /tmp/summary.tsv)"
+
+      - name: Tell Matt, but only if there is something to tell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ ! -s /tmp/summary.tsv ]; then
+            echo "Nothing to say about any branch. Posting nothing, on purpose."
+            exit 0
+          fi
+          {
+            echo "### Branches — $(date -u '+%Y-%m-%d')"
+            echo
+            echo "Measured by \`branchWatch.mjs\` against \`main\`, not remembered."
+            echo
+            echo '```'
+            cat /tmp/branches.txt
+            echo '```'
+            echo
+            echo "**NO PR** is the one that costs the most. Nothing automated can merge a branch without an open pull request, so that work is invisible to \`auto-merge\` and to every session that greps the working tree."
+            echo
+            echo "**ALREADY ON** means every byte is on \`main\` already. That is a strong signal and it is still not permission — an unmerged branch is somebody's unshipped work and only its owner deletes it. It tells you which are safe to ask about."
+            echo
+            echo "**BOTH CHANGED** is a lead, never an accusation. Two branches touching one file is normal here. It earns a line because the one time it mattered, the same fix had been built twice."
+          } > /tmp/report.md
+          cat /tmp/report.md
+
+          # One tracking issue, commented on, so the trend reads in one place
+          # instead of a new issue every morning.
+          NUM=$(gh issue list --state open --label branches --limit 1 --json number --jq '.[0].number // empty')
+          if [ -z "$NUM" ]; then
+            gh label create branches --description "Daily branch drift report" --color ededed 2>/dev/null || true
+            gh issue create --title "Branch drift" --label branches --body-file /tmp/report.md
+          else
+            gh issue comment "$NUM" --body-file /tmp/report.md
+          fi
