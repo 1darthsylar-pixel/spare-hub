@@ -112,12 +112,29 @@ export const DEFAULT_BASE = "main";
      behind       commits the base has that it does not
      lastCommit   ISO timestamp of its tip
      openPR       the open pull request number, or null for none
-     changed      files it changed since it split from the base
-     baseChanged  files the BASE changed since that same split
+     changed      files where this branch STILL DIFFERS from the base
+     baseChanged  files the BASE changed since the branch split
 
-   ⚠️ `changed` AND `baseChanged` ARE BOTH MEASURED FROM THE MERGE BASE. Diffing
-   a branch against the base's tip instead mixes "what I did" with "what
-   everybody else did", and every branch then looks like it rewrote the repo. */
+   ⛔⛔ `changed` IS NOT "WHAT THIS BRANCH DID", AND THE FIRST VERSION HAD IT
+   WRONG IN THE MOST COMMON CASE THERE IS. It was the three-dot diff — what the
+   branch added since it split. A SQUASH MERGE LEAVES THE MERGE BASE WHERE IT
+   WAS, so that stays non-empty for ever even after every byte has landed. A
+   branch merged four minutes ago and not auto-deleted read as BOTH CHANGED,
+   which is the duplicate-work alarm, instead of ALREADY ON, which is "finished,
+   safe to ask about deleting".
+
+   ⇒ Measured on spare-hub minutes after merging: three files still reported as
+   this branch's own work, and `git diff main branchTip` on those same three
+   files was EMPTY. The base had all of it.
+
+   ⚠️ So the question is not "what did this branch add" but "does anything on
+   this branch still differ from the base". Empty means finished, whatever the
+   commit graph says.
+
+   ⚠️ IT STAYS CONSERVATIVE WHERE IT CANNOT TELL. A branch whose file the base
+   has since moved on further still differs, so it is not called finished. That
+   is the right way round: claiming a branch is done when it is not is how
+   somebody's work gets deleted. */
 
 /* ⚠️⚠️ WRITTEN `!(x > y)` RATHER THAN `x <= y` ON PURPOSE. An unparsable date
    gives NaN, every comparison against NaN is false, and the plain form would
@@ -256,7 +273,14 @@ if (isMain) {
     const ref = `origin/${name}`;
     let mb = "";
     try { mb = git("merge-base", `origin/${base}`, ref); } catch { mb = ""; }
-    const changed = mb ? lines(git("diff", "--name-only", mb, ref)) : [];
+    /* ⛔ TWO STEPS, AND THE SECOND ONE IS THE FIX. First what this branch has
+       worked on at all, then which of those STILL differ from the base. A
+       squash merge makes the first list permanent and the second list empty,
+       which is exactly the difference between "unshipped work" and "finished". */
+    const touched = mb ? lines(git("diff", "--name-only", mb, ref)) : [];
+    const changed = touched.length
+      ? lines(git("diff", "--name-only", `origin/${base}`, ref, "--", ...touched))
+      : [];
     const baseChanged = mb ? lines(git("diff", "--name-only", mb, `origin/${base}`)) : [];
     const ab = mb ? git("rev-list", "--left-right", "--count", `origin/${base}...${ref}`).split(/\s+/) : ["0", "0"];
     return {
