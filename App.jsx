@@ -62,7 +62,7 @@ const SupplyCentral = lazy(() => import("./SupplyCentral.jsx"));
 const EquipmentLog = lazy(() => import("./EquipmentLog.jsx"));
 const DailyCleaning = lazy(() => import("./DailyCleaning.jsx"));
 const HRConsole = lazy(() => import("./HRConsole.jsx"));
-import { HR_RANK_BY_TITLE as HR_RANK } from "./hrRoster.js";
+import { hrRankOfTitle } from "./hrRoster.js";
 import { requiredDeck, trainingKey, trainingRecord, hasWatched } from "./hubTraining.js";
 import { HR_DEFAULT_PIN, loadHRTeam, loadHRTeamResult, isHbExempt } from "./hrTeam.js";
 const CashAudit = lazy(() => import("./CashAudit.jsx"));
@@ -135,8 +135,31 @@ import { buildRows as buildInputRows, forPerson as inputsForPerson, byOwner as i
 //   Team Member / Trainer                       → 1
 //   Team Leader / Assistant Director / Director → 2
 //   LDD / HR / Executive Director / Owner       → 3
+/* ⛔⛔ IT MUST BE `hrRankOfTitle`, NEVER THE RAW MAP, AND THIS FILE HAD THE RAW
+   MAP UNTIL Aug 19 2026.
+
+   `HR_RANK_BY_TITLE` is only the BUILT-IN ladder. `hrRankOfTitle` is that ladder
+   PLUS the titles a store has named for itself in `hr.extraTitles` — Kitchen
+   Director, Talent Director, Hospitality Director at the Village. hrRoster.js
+   added that fallback and said why: "every one of those scored 0 here, which is
+   Limited."
+
+   ⇒ THE FIX LANDED THERE AND NEVER REACHED HERE, so the two disagreed:
+
+     Kitchen Director   hrRankOfTitle -> rank 5 -> tier 2, Leader
+                        this file     -> rank 0 -> tier 1, Team Member
+
+   ⛔ A LEADER SIGNED IN AND GOT THE TEAM MEMBER HUB. HR said one thing, the
+   tile grid did another, and nothing errored — which is why it survived. It is
+   the reported Village symptom: "until those titles are set they sign in and
+   see almost nothing."
+
+   ⚠️ UNKNOWN IS STILL 0 AND 0 IS STILL TIER 1. This widens nothing. A title in
+   neither the built-in ladder nor the store's own list fails closed exactly as
+   before, and `hrRankOfTitle` keeps the built-in map winning so a store can add
+   a name the Hub does not have but never redefine one it does. */
 const roleTier = (role) => {
-  const r = HR_RANK[role] || 0;
+  const r = hrRankOfTitle(role);
   return r >= 6 ? 3 : r >= 3 ? 2 : 1;
 };
 
@@ -416,7 +439,10 @@ function buildRankByName(roster, rolesMap) {
   const clash = new Set();
   for (const m of roster || []) {
     const role = (rolesMap || {})[m.id] || m.role;
-    const r = HR_RANK[role] || 0;
+    /* ⚠️ THE SAME LOOKUP AS `roleTier`, for the same reason. Reading the raw map
+       here left everybody on a store-named title out of this index entirely,
+       because `if (!r) continue` drops a rank of 0. */
+    const r = hrRankOfTitle(role);
     if (!r) continue;
     for (const k of rankNameKeys(m.name)) {
       if (out[k] === undefined) out[k] = r;
@@ -2281,7 +2307,7 @@ export default function App() {
      and says so. */
   const trainMarkWatched = async () => {
     if (trainBusy || !user || user.id == null) return;
-    const deck = requiredDeck(HR_RANK[effectiveRole(user.id, user.role)] || 0, tier);
+    const deck = requiredDeck(hrRankOfTitle(effectiveRole(user.id, user.role)), tier);
     setTrainBusy(true);
     try {
       const ok = await kvSet(
@@ -3667,7 +3693,7 @@ export default function App() {
      reach Supabase", and the second must never gate anybody.
      ⚠️ `!ackOpen` so the write-up gate is always answered first. */
   const trainDeck = signedIn
-    ? requiredDeck(HR_RANK[effectiveRole(user && user.id, user && user.role)] || 0, tier)
+    ? requiredDeck(hrRankOfTitle(effectiveRole(user && user.id, user && user.role)), tier)
     : null;
   /* ⚠️ ORDER OF PRECEDENCE, AND IT IS DELIBERATE: a write-up first (real HR
      consequences), then the PIN somebody else knows (security), then training
@@ -5758,7 +5784,7 @@ export default function App() {
               is the whole point for them. ─────────────────────────────── */}
 
         {!openSection && !searching && signedIn && user && tier < 3 && (
-          <RankClimb role={user.role} rank={HR_RANK[user.role]} />
+          <RankClimb role={user.role} rank={hrRankOfTitle(user.role)} />
         )}
 
         {/* ── LABOR + FOOD — the two money cards (tiers 2–3) ──────────────

@@ -869,7 +869,65 @@ const CONFIG = {
     minNoticeHours: 12,
     maxDropsPerWeek: 2,
   },
+
+  /* ★★ WHAT THIS STORE CALLS ITS OWN LEADERSHIP ROLES.
+     See `extraTitleRanks()` below for the whole reasoning. Each entry is a
+     title this store uses, pointed at a rank the Hub already has.
+
+     ⚠️ EMPTY HERE AND EMPTY IN A CLONE, ON PURPOSE. A store types its own in
+     Store Settings; nobody inherits anybody else's vocabulary.
+     ⚠️ THE RANK IS ACCESS, NOT SENIORITY. 4 is Assistant Director and cannot
+     open a personnel file; 5 is Director and can open every one. That is the
+     whole decision, and the settings screen has to say it in those words.
+     ⚠️ ONLY KEYS THE DEFAULT ALREADY KNOWS SURVIVE `applyStoreOverrides`, which
+     merges saved settings over this object — so this section has to exist here,
+     even empty, or a store's saved titles are dropped on load. `hr.extraTitles`
+     is in `OPEN_KEY_MAPS` for the same reason, one layer down: the KEYS are the
+     store's answer and cannot be listed in advance. */
+  hr: {
+    extraTitles: {},
+  },
 };
+
+/* ══════════════════════════════════════════════════════════════════════════
+   A STORE'S OWN LEADERSHIP TITLES.
+
+   A store names its own roles — Kitchen Director, Talent Director, Hospitality
+   Director — and every one of those scores 0 against the built-in ladder, which
+   is Limited. This is where a store says "our Kitchen Director has the access
+   your Director has" without the Hub having to know the word in advance.
+
+   ⚠️ CAPPED AT 5, WHICH IS Director. Ranks 6 and up are Leadership Development
+   Director, Executive Director, Human Resources, Accounts Payable and Owner —
+   the roles the Hub's own gates and the Worker's HR routes are written around.
+   A store must not be able to mint one of those from a settings screen. Five is
+   still the rank that reads every personnel file, so the editor has to say so
+   out loud; the cap stops the worst outcome, it does not remove the decision.
+
+   ⚠️ EMPTY IS THE DEFAULT AND IS CORRECT EVERYWHERE. A clone that has typed
+   nothing inherits no store's vocabulary.
+
+   ⚠️ READ AT CALL TIME, NEVER CAPTURED. Same rule as every other list in this
+   file: a `const` here would freeze the shipped default before a store's saved
+   settings arrive. */
+export const HR_EXTRA_TITLE_MAX_RANK = 5;
+
+export function extraTitleRanks() {
+  const raw = storeCfg("hr.extraTitles", null);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out = {};
+  Object.keys(raw).forEach((k) => {
+    const name = String(k || "").trim();
+    const rank = Number(raw[k]);
+    /* ⚠️ A BAD ROW IS DROPPED, NOT CLAMPED. Clamping a 9 down to 5 would hand
+       somebody Director access because a typo landed near it. A row that does
+       not make sense should do nothing at all. */
+    if (!name) return;
+    if (!Number.isInteger(rank) || rank < 1 || rank > HR_EXTRA_TITLE_MAX_RANK) return;
+    out[name] = rank;
+  });
+  return out;
+}
 
 /* Frozen all the way down. The flat objects in this file have always been
    frozen; the new sections nest, and a frozen outer object with a mutable
@@ -991,14 +1049,37 @@ export function isGateCity() {
 
 const isPlain = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 
-function mergeDeep(base, over) {
+/* ══════════════════════════════════════════════════════════════════════════
+   SECTIONS WHOSE KEYS ARE THE STORE'S OWN ANSWER.
+
+   `mergeDeep` normally drops any key the defaults do not already know, because
+   a typo in a saved record must not invent a setting nothing reads. That is
+   right for every fixed setting and WRONG for a map whose keys are data the
+   store supplies — a store's own leadership titles cannot be listed here in
+   advance, so the guard would silently delete every one of them on load.
+
+   ⚠️ A PATH ONLY BELONGS HERE WHEN THE KEYS ARE DATA THE STORE SUPPLIES. The
+   test is: could I list every valid key in this file? If yes, it is not an open
+   map and it must not be added.
+
+   ⚠️ `doors.byDay` IS ON THIS LIST AT GATE CITY AND NOT HERE, because this
+   store's config has no `doors` section yet. When it gains one, add the path —
+   that store lost every opening time a person typed until this was fixed. */
+const OPEN_KEY_MAPS = new Set([
+  "hr.extraTitles",
+]);
+
+function mergeDeep(base, over, path = "") {
   const out = Array.isArray(base) ? [...base] : { ...base };
+  const open = OPEN_KEY_MAPS.has(path);
   for (const k of Object.keys(over || {})) {
     const b = out[k], o = over[k];
     /* An override may only fill a key the defaults already know about. A typo
-       in a saved record must not invent a setting nothing reads. */
-    if (!(k in out)) continue;
-    out[k] = isPlain(b) && isPlain(o) ? mergeDeep(b, o) : o;
+       in a saved record must not invent a setting nothing reads.
+       ⚠️ UNLESS THIS IS AN OPEN MAP, where the keys ARE the store's answer. */
+    if (!(k in out) && !open) continue;
+    const next = path ? `${path}.${k}` : k;
+    out[k] = isPlain(b) && isPlain(o) ? mergeDeep(b, o, next) : o;
   }
   return out;
 }
