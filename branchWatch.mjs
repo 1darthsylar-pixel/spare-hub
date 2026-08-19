@@ -214,7 +214,15 @@ export function watch(branches, opts = {}) {
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   const { execFileSync } = await import("node:child_process");
-  const git = (...a) => execFileSync("git", a, { encoding: "utf8" }).trim();
+  /* ⚠️ stderr IS CAPTURED, NOT INHERITED, AND THAT IS NOT TIDINESS. Several
+     calls here are EXPECTED to fail and are caught — a clone with no
+     `origin/HEAD` is the normal case, not a problem. Inherited, git printed
+     `fatal: ref refs/remotes/origin/HEAD is not a symbolic ref` straight into
+     the middle of a report that then said everything was fine. A report with a
+     stray `fatal:` in it is one somebody stops trusting. Captured, a real
+     failure still arrives on the thrown error, where the catch can decide. */
+  const git = (...a) =>
+    execFileSync("git", a, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   const lines = (s) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 
   const wantSummary = process.argv.includes("--summary");
@@ -240,7 +248,7 @@ if (isMain) {
   try {
     prByHead = new Map(JSON.parse(
       execFileSync("gh", ["pr", "list", "--state", "open", "--json", "number,headRefName"],
-        { encoding: "utf8" })
+        { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
     ).map((p) => [p.headRefName, p.number]));
   } catch { prByHead = null; }
 
