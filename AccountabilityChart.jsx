@@ -104,7 +104,7 @@ const C = {
    as the `liveRocks` prop. Deleted 12 Aug 2026, with the seats. */
 
 // Individual Rocks with no company Rock to ladder into.
-// (Storage consolidation reassigned to Brandon McDowell — see BOH bench below.)
+// (Storage consolidation reassigned to Brandon — see BOH bench below.)
 const ORPHAN_ROCKS = [];
 
 // ---- The tree ----

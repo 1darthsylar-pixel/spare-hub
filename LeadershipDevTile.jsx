@@ -45,8 +45,8 @@ const RELEASE_DEFAULT = false;              // only until she sets it once
    development is locked for me. I need access"), Matt added Nick in the same
    breath. Checked against the live roster before adding, because this gate
    matches on a NAME and a drifted spelling here is a silent lockout with no
-   error anywhere: `gcfcr-hr-team-v1` holds them as exactly "Hannah Jackson"
-   (tm21) and "Nick Matthews" (tm37).
+   error anywhere: `gcfcr-hr-team-v1` holds them as exactly "Hannah"
+   (tm21) and "Nick" (tm37).
    ⚠️ This grants PRE-RELEASE VISIBILITY ONLY, which is what was asked for. It
    does not widen who can flip the release switch: `canRelease` below already
    admits them by ROLE (Executive Director | HR, and Owner), so their power is

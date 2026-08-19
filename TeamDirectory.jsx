@@ -52,7 +52,7 @@ const USER_KEY = "gcfcr-access-user"; // App.jsx writes the signed-in person her
 //
 // PRIMARY GATE = SLACK USER ID. Slack IDs never change; display names do, and
 // a name-string gate is what silently locked Bri out of her own admin panel
-// (the Hub knew her as "Bri Moore", the gate wanted "Brianna Moore").
+// (the Hub knew her as "Bri", the gate wanted "Brianna Moore").
 /* ★ THE FIVE ADMINS NOW COME FROM storeConfig.js, WHICH IS THE ONLY COPY.
    This exact block was duplicated in four tiles under four different names.
    Byte-identical every time, so a second store had to find all four to stop
@@ -263,7 +263,7 @@ function hydrate(raw) {
 
    It moved because a SECOND caller now needs it. The org chart's cards
    (`data.org`, `data.directors`) carry no `hrId` and never have — enrichWithHR
-   only ever walked `data.teams` — so "who is Bri Moore, in HR?" had no answer
+   only ever walked `data.teams` — so "who is Bri, in HR?" had no answer
    anywhere on the Our Team page. The Schedule button needs exactly that answer,
    and answering it a second way would be a second opinion on identity. This
    repo has one of those already and it cost a day (design rule 8).
@@ -356,7 +356,7 @@ function enrichWithHR(data, hrList) {
          this UI ever lets anyone choose an hrId". That is no longer true — the
          edit row now has a "Link to HR record" picker, added for the case name
          matching provably cannot solve: the roster holds BOTH tm26 Lizbeth
-         Gonzalez and tm27 Lizbeth Gonzalez Ramos, two real people whose keys
+         Gonzalez and tm27 Lizbeth, two real people whose keys
          collide, so `match()` correctly refuses to resolve EITHER of them and
          no spelling of their names will ever fix it.
          Without this guard the matcher could overwrite a hand-picked id the
@@ -433,7 +433,7 @@ function computeHrSync(data, hrList, statusMap) {
      team would have been the wrong fix and would have duplicated them.
      ⚠️ BEING NAMED AS A TEAM'S DIRECTOR IS BEING PLACED. Same two keys as the
      member loop below, so a directory holding "Daisy Hernandez" still matches an
-     HR record reading "Daisy Hernandez Espitia". */
+     HR record reading "Daisy". */
   for (const d of data.directors || []) {
     if (!d) continue;
     if (d.hrId != null) placedIds.add(String(d.hrId));
@@ -571,7 +571,7 @@ function photoFor(name, idx) {
     if (rest) return rest.charAt(0) === init;
     /* 🐛 THIS BRANCH USED TO BE A BARE `true`, AND IT MATCHED EVERY INITIAL.
        A Slack key that IS a bare first name — `adriana` — reached Adriana
-       Arias Hurtado (initial "a") AND Adriana Carrera Reyes (initial "c"). The
+       Arias Hurtado (initial "a") AND Adriana (initial "c"). The
        dedupe below then saw one URL from one key, called it "exactly one
        match", and drew the same face on both cards. One photo, two people, and
        the directory looked perfectly normal — the identical shape as the setup
@@ -691,7 +691,7 @@ function PersonRow({ person, editing, canSeeHidden, hrList, onChange, onDelete }
           Shown ONLY when nothing resolved. `enrichWithHR` attaches an hrId by
           name and refuses on any ambiguity, so a blank here means the matcher
           gave up — and for some people it always will: the roster holds both
-          tm26 Lizbeth Gonzalez and tm27 Lizbeth Gonzalez Ramos, two real
+          tm26 Lizbeth Gonzalez and tm27 Lizbeth, two real
           people whose name keys collide. No spelling fixes that; somebody has
           to say which is which, once.
           ⚠️ Without an hrId a person's recommendation requests and evaluation

@@ -28,7 +28,7 @@
    Everyone else sees only their own row. Assistant Director and Manager are
    OUT — all eight of them, and so is every Director not on the list.
 
-   ⚠️ PAYROLL IS RANK 1 AND JOINS BY NAME, NOT BY RANK. Cindy Dunning reads
+   ⚠️ PAYROLL IS RANK 1 AND JOINS BY NAME, NOT BY RANK. Cindy reads
    every file but was never granted a single write power, and the ladder cannot
    express that — so she sits at the bottom of it and is OR'd in here. A
    rank-only test locks her out of the entire console on day one. Every WRITE
@@ -282,13 +282,13 @@ export function hrTitleFor(id, roles, added) {
 
    ⚠️ THIS IS SMALLER THAN IT LOOKS, AND THAT WAS WORTH CHECKING FIRST. The
    roster already stores KNOWN names, not legal ones — the seed says "Ally
-   Hardie", "Cindy Dunning", "Hannah Jackson", "Matt Jackson", "Isaiah DeBrew",
+   Hardie", "Cindy", "Hannah", "Matt", "Isaiah DeBrew",
    "Nicole Garcia", "Marchelle Moody". All seven people whose CFA Home record
    carries a different legal first name are ALREADY right here. So `preferred`
    is blank for 105 of 106 people and nothing about their screens moves.
 
    The one exception is the person the Aug 7 sweep caught: the roster says
-   "Guadalupe Escamilla Villanueva" and the store says Lupe. Her two food
+   "Guadalupe" and the store says Lupe. Her two food
    quality rows matched nobody for months because the register said "Lupe
    Villanueva" and first names have to be equal. That was patched by teaching
    the register her other spelling; this is the general answer to it.

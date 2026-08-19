@@ -122,7 +122,7 @@ export function parseRanges(str) {
    A HotSchedules roster line asks a different question. It is a sequence of
    contiguous DAYPART SEGMENTS of ONE shift, running forward through the day:
 
-       "Ana Turcios 5-11, 11-2"                  5am → 2pm
+       "Ana 5-11, 11-2"                  5am → 2pm
        "Brooke Southern 2-5, 5-11"               2pm → 11pm
        "Yasmin Robles Torres 11-2, 2-5, 5-11"    11am → 11pm
 

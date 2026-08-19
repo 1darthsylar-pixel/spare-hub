@@ -249,7 +249,7 @@ const stationHoursLabel = (hours) => (Array.isArray(hours) ? hours : [])
 /* ⚠️ FOUR COLUMNS ON A PHONE IS ABOUT SEVEN CHARACTERS, so a full name is not
    a choice this cell has. The first render put "Adriana…" and "Ana Tur…" in
    adjacent cells on the same board, which is worse than useless: this store
-   has an Adriana Arias Hurtado AND an Adriana Carrera Reyes, and a leader
+   has an Adriana Arias Hurtado AND an Adriana, and a leader
    reading "Adriana…" cannot tell which one is on Specials.
    ⇒ First name, plus a last initial ONLY when somebody else on this board
    shares the first name. That is exactly what the setup board already prints

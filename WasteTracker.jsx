@@ -35,7 +35,7 @@ const CONFIG = {
    ⚠️ DO NOT PUT AN ID BACK HERE. Change who gets this in the notify-targets
    config, which takes effect without a deploy. An id in this file is a
    second store DMing one of ours, and a page choosing its own recipient. */
-// Brandon McDowell — BOH Director from 8/1/2026; owns truck / waste / inventory
+// Brandon — BOH Director from 8/1/2026; owns truck / waste / inventory
 // and facilities. Tagged on the daily #inventory-management waste post.
 // This slot used to hold Tyler Byrd's ID. Tyler's last day is 7/22/2026, and
 // terminating him in HR does NOT touch this — it's a constant in this file, so

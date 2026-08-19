@@ -655,7 +655,7 @@ const RELEASED = false;
    ROLE, so he can already reach the tile — leaving him off this list would
    give him the locked screen this note exists to prevent.
    ⚠️ SPELLINGS MATTER AND THEY DRIFT. The gate compares against the ROSTER
-   name from hrTeam.js — "Daisy Hernandez Espitia", no hyphen — while Slack
+   name from hrTeam.js — "Daisy", no hyphen — while Slack
    knows her as "Daisy Hernandez-Espitia" and the accountability chart as
    "Daisy Hernandez". All three are listed, because a near-miss here fails
    silently and reads as "the fix did not work". */

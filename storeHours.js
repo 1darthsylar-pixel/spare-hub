@@ -174,7 +174,7 @@ export function stationsForDate(stations, cfg, iso, opts) {
 
   /* ⚠️⚠️ THE OPENING CLAMP IS A CHOICE THE CALLER MAKES, AND HIS OWN SCHEDULE
      IS WHY. The first version cut EVERY station to the store's opening time.
-     Matt's real Labor Day roster has **Ana Turcios on Prep from 8:00 AM on a
+     Matt's real Labor Day roster has **Ana on Prep from 8:00 AM on a
      day the store opens at 10:30** — prep comes in before the doors, exactly
      as it does on an ordinary day. Clamping her to 10:30 would have deleted
      two and a half hours of prep from a holiday and nobody would have seen it

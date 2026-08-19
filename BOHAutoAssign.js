@@ -177,7 +177,7 @@ const adRankOf = (p) => rankIn("bohAdOrder", p, boardNamePatterns("bohAdNames").
    takes it AHEAD of the schedule, so a Breader-coded person slides to the
    rest of the BREADING section. Same shape as the FOH Bronson/Julie locks.
    NOTE: matches first name "Juana"; there is exactly one Juana on the roster
-   (Juana Romero). If a second Juana is ever hired, both would lock to
+   (Juana). If a second Juana is ever hired, both would lock to
    Breader — revisit then. */
 /* ⚠️⚠️ THE NOTE BELOW SAID "if a second Juana is ever hired, both would lock to
    Breader — revisit then." That is now answered for good at Gate City AND it
