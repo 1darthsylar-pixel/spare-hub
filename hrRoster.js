@@ -40,7 +40,7 @@
    list would miss, silently locking out anyone set to one.
    ══════════════════════════════════════════════════════════════════════════ */
 
-import { hrConsolePeople, HR_CONSOLE_OPEN_BY_RANK, isGateCity } from "./storeConfig.js";
+import { hrConsolePeople, HR_CONSOLE_OPEN_BY_RANK, isGateCity, extraTitleRanks } from "./storeConfig.js";
 
 /* Title → rank. MUST stay byte-identical to RANK in HRConsole.jsx.
    ⏭️ HRConsole should import this and delete its local copy — held back only
@@ -154,7 +154,32 @@ export const HR_SEED_ROLES = {};
    answering identically if the seed is ever edited). */
 const normTitle = (r) => (r === "Manager" ? "Assistant Director" : String(r || ""));
 
-export const hrRankOfTitle = (title) => HR_RANK_BY_TITLE[normTitle(title)] || 0;
+/* ★★ THE BUILT-IN LADDER FIRST, THEN THE STORE'S OWN TITLES.
+
+   A store names its own leadership roles — Kitchen Director, Talent Director,
+   Hospitality Director — and every one of those scored 0 here, which is
+   Limited. See `extraTitleRanks` in storeConfig.js.
+
+   ⚠️⚠️ THE BUILT-IN MAP WINS, AND THAT ORDER IS THE SAFETY. If a store's list
+   could override it, typing "Team Member: 5" into a settings screen would hand
+   every team member every personnel file. A store may add a name the Hub does
+   not have; it may never redefine one it does.
+
+   ⚠️ READ AT CALL TIME, so a store's saved settings take effect without this
+   module being re-imported — the same reason `hrConsolePeople` is a function.
+
+   ⚠️ UNKNOWN IS STILL 0, AND 0 IS STILL LIMITED. Adding a lookup must not turn
+   a typo into access. A title in neither place fails closed exactly as before. */
+export const hrRankOfTitle = (title) => {
+  const t = normTitle(title);
+  /* ⚠️⚠️ `hasOwnProperty`, NOT TRUTHINESS. `Limited` is rank 0 and 0 is falsy,
+     so a truthy test falls straight through to the store's map — meaning a
+     settings screen could promote the one title whose entire job is to have no
+     access. */
+  if (Object.prototype.hasOwnProperty.call(HR_RANK_BY_TITLE, t)) return HR_RANK_BY_TITLE[t];
+  const extra = extraTitleRanks();
+  return extra[t] || 0;
+};
 
 /* The Hub's three access tiers, from a job title. 1 = Team Member, 2 = Leader,
    3 = Director, which are App.jsx's own words for them.
