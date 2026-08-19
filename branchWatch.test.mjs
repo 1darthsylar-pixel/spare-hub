@@ -25,7 +25,7 @@
    where they run, pass, and cannot fail the build. Add new blocks ABOVE it.
    ══════════════════════════════════════════════════════════════════════════ */
 
-import { findingsFor, watch, STALE_DAYS, RECORD_FILES } from "./branchWatch.mjs";
+import { findingsFor, watch, STALE_DAYS, RECORD_FILES, HELD_FILE } from "./branchWatch.mjs";
 
 let pass = 0;
 const fails = [];
@@ -204,6 +204,40 @@ const HEALTHY = {
   ok("★ the skip list is overridable, so a repo with different bookkeeping can say so",
     findingsFor(mixed, { nowMs: NOW, recordFiles: [] })
       .find((f) => f.code === "BOTH CHANGED")?.files?.length === 3);
+}
+
+{
+  /* ── branches held on purpose ─────────────────────────────────────────── */
+  /* ⛔ `backline-books` parks `claude/store-intake-uploads` deliberately, and
+     its own CLAUDE.md says in capitals not to delete it. Without the hold list
+     it would earn NO PR and STALE every morning for ever, about a decision
+     already made. Same failure as the record files: an alarm that fires daily
+     stops being read. */
+  const parked = { ...HEALTHY, name: "claude/parked-on-purpose", openPR: null, lastCommit: daysAgo(90) };
+  const busy = { ...HEALTHY, name: "claude/real-work", openPR: null };
+
+  ok("★★ WITHOUT THE HOLD, A PARKED BRANCH SHOUTS EVERY DAY",
+    watch([parked, busy], { nowMs: NOW }).length === 2);
+  ok("★★ HELD, IT PRODUCES NOTHING AT ALL",
+    watch([parked, busy], { nowMs: NOW, held: ["claude/parked-on-purpose"] })
+      .map((r) => r.branch).join("|") === "claude/real-work",
+    watch([parked, busy], { nowMs: NOW, held: ["claude/parked-on-purpose"] })
+      .map((r) => r.branch).join("|"));
+
+  /* ⚠️ HOLDING ONE MUST NOT QUIET THE OTHERS, which is the mistake that would
+     turn this into an off switch for the whole report. */
+  ok("★★ AND EVERY OTHER BRANCH IS STILL REPORTED IN FULL",
+    watch([parked, busy], { nowMs: NOW, held: ["claude/parked-on-purpose"] })[0]
+      ?.findings.some((f) => f.code === "NO PR"));
+
+  ok("★ an empty hold list holds nothing",
+    watch([parked, busy], { nowMs: NOW, held: [] }).length === 2);
+  ok("★ no hold list at all holds nothing, so a repo that never needed one is unchanged",
+    watch([parked, busy], { nowMs: NOW }).length === 2);
+  ok("★ a name in the list that matches no branch is harmless",
+    watch([busy], { nowMs: NOW, held: ["claude/long-gone"] }).length === 1);
+  ok("★ the hold file is under .github, where a repo's own settings live",
+    HELD_FILE === ".github/branches-held.txt", HELD_FILE);
 }
 
 /* ⛔ THE SUMMARY GOES LAST. Anything added below this line still runs, still

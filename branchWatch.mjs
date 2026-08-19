@@ -77,6 +77,26 @@ export const STALE_DAYS = 6;
    merge time, which is when they can actually be resolved. */
 export const RECORD_FILES = ["build-log.md", "CLAUDE.md", "README.md", "harness/README.md"];
 
+/* ⛔⛔ A BRANCH SOMEBODY DELIBERATELY PARKED MUST NOT BE NAGGED ABOUT DAILY.
+   `backline-books` holds `claude/store-intake-uploads` on purpose: it is
+   unmerged, it is superseded, and its own CLAUDE.md says in capitals not to
+   delete it. Without this, that branch would earn NO PR and STALE every single
+   morning for ever, and a report that raises the same alarm every day about a
+   decision already made is one that stops being read — which is the same
+   failure as no report at all, and the reason the record files are skipped too.
+
+   ⇒ `.github/branches-held.txt`, one branch name per line, `#` for comments.
+   A held branch produces NO findings. It is not hidden: the run still names how
+   many are held and which, as a plain line rather than an alarm.
+
+   ⚠️ THE FILE BEING ABSENT MEANS NOTHING IS HELD, which is the right default —
+   a repo that has never needed one gets no behaviour it did not ask for.
+
+   ⚠️ AND HOLDING IS NOT DELETING. This only quiets the daily line. Every rule
+   about unmerged branches still applies: it is somebody's unshipped work and
+   only its owner removes it. */
+export const HELD_FILE = ".github/branches-held.txt";
+
 /* ⚠️ THE DEFAULT BRANCH IS READ, NEVER ASSUMED. Every repo here uses `main`
    today, and a tool that hard-codes it reports "everything is fine" the day
    one does not. The caller passes what git actually said. */
@@ -177,7 +197,9 @@ export function findingsFor(b, opts = {}) {
 /* Every branch, worst first, so a phone screen shows the ones that matter. */
 export function watch(branches, opts = {}) {
   const rank = { stop: 0, look: 1, done: 2 };
+  const held = opts.held ?? [];
   return branches
+    .filter((b) => !held.includes(b.name))
     .map((b) => ({ branch: b.name, base: b.base || DEFAULT_BASE, findings: findingsFor(b, opts) }))
     .filter((r) => r.findings.length)
     .sort((a, b) => rank[a.findings[0].level] - rank[b.findings[0].level]
@@ -241,7 +263,16 @@ if (isMain) {
     };
   });
 
-  const report = watch(rows);
+  /* One name per line, `#` starts a comment, blank lines ignored. Absent file
+     means nothing is held. */
+  let held = [];
+  try {
+    const { readFileSync } = await import("node:fs");
+    held = readFileSync(HELD_FILE, "utf8").split("\n")
+      .map((l) => l.replace(/#.*$/, "").trim()).filter(Boolean);
+  } catch { held = []; }
+
+  const report = watch(rows, { held });
 
   if (wantSummary) {
     for (const r of report) {
@@ -251,6 +282,13 @@ if (isMain) {
   }
 
   console.log(`\n  ${rows.length} branch(es) beside ${base}.`);
+  /* ⚠️ NAMED, NEVER SILENTLY DROPPED. A held branch that vanished from the
+     output entirely would be a branch nobody remembers deciding about. */
+  const heldHere = held.filter((h) => rows.some((r) => r.name === h));
+  if (heldHere.length) {
+    console.log(`  ${heldHere.length} held on purpose, so not reported: ${heldHere.join(", ")}`);
+    console.log(`  (${HELD_FILE} says which and should say why.)`);
+  }
   if (prByHead === null) {
     console.log("  ⚠️ pull request list unreadable, so NO PR is not reported this run.");
   }
