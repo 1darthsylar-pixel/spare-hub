@@ -119,7 +119,7 @@ const EVAL_ROLES = ["Assistant Director", "Team Leader", "Senior Trainer", "Juni
 // Role-based, not PIN-based — a personal PIN proves identity,
 // it does not grant authority.
 // ★ ROLE FIRST, NAMES ONLY AS A SAFETY NET (Jul 26).
-// A hardcoded list of people is a thing that rots. Kyleeka Gonzalez is leaving
+// A hardcoded list of people is a thing that rots. Kyleeka is leaving
 // and sits in FOUR of these lists across the Hub; a new Executive Director
 // would sit in none of them and silently have no access until someone edited
 // code. Neither failure announces itself.

@@ -171,7 +171,7 @@ const roleTier = (role) => {
    and the refresh effect rewrites it on the next load because the clamped role
    differs from the stored one. */
 /* ── HISTORY, KEPT ON PURPOSE (same rule as accessOverrides.js) ──────────
-   Jul 28 2026 — Kyleeka Gonzalez (id 23) was clamped to "Team Member" here at
+   Jul 28 2026 — Kyleeka (id 23) was clamped to "Team Member" here at
    Hannah's and Bri's request.
    Jul 29 2026 — LIFTED in accessOverrides.js ("Restore Kyleeka's access") after
    the three of them agreed, and both Hannah and Bri were told it was done.
@@ -1154,7 +1154,7 @@ const SECTIONS = [
     color: RED,
     tools: [
       { id: "cashaudit", name: "Cash Audit", desc: "Audit the safe and log overages", tier: 2, allow: ["Payroll"], Component: CashAudit },
-      /* ★ DIRECTORS ADDED Aug 10 2026. Matt, looking at Brandon McDowell's
+      /* ★ DIRECTORS ADDED Aug 10 2026. Matt, looking at Brandon's
          phone: "Director should see these things but just not the profit share
          or PTO. The other things in financial though."
          Director is rank 5 and tier 3 starts at rank 6, so all three of these

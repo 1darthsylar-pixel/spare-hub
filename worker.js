@@ -423,7 +423,7 @@ async function recipientFor(env, tool) {
 
     /* First name only — matches the tone of the existing emails.
        ⚠️ OFF hrDisplayName, so a preferred name wins before the split. Taking
-       the first word of the roster name greets Guadalupe Escamilla Villanueva
+       the first word of the roster name greets Guadalupe
        as "Guadalupe" when the whole store calls her Lupe. A nickname with a
        space in it ("Mary Jo") still reduces to its first word, which is the
        same rule as before and the right one for a greeting. */
@@ -716,7 +716,7 @@ function icsFor({ uid, summary, description, at, mins, tz, organizer, organizerN
 }
 
 /* ⚠️ btoa ALONE THROWS ON ANYTHING ABOVE U+00FF, and this roster holds names
-   like José and Adriana Carrera Reyes. One accented name in a meeting label
+   like José and Adriana. One accented name in a meeting label
    would have thrown inside the booking route, where the catch is there to stop
    a failed NOTICE undoing a good booking — so the invite would have gone
    missing silently and the booking would have looked fine.
@@ -1432,7 +1432,7 @@ async function runSlackAvatars(env) {
   const idClash = new Set();
   // ★ SECONDARY INDEX (Jul 25). The lookups below feed HR ROSTER names into a
   // map keyed on SLACK names, and the two don't always agree. Live example:
-  // Slack has "Tashiana Cortes", HR has "Tashiana Cortes Campos" — normName
+  // Slack has "Tashiana", HR has "Tashiana" — normName
   // gives "tashianacortes" vs "tashianacortescampos", so she resolves to
   // nothing and her reminder is silently dropped. Same failure that hid the
   // food safety rota and Bri's recommendation requests.
@@ -2089,7 +2089,7 @@ async function runCleaningSummary(env) {
      directly instead of hoping she reads a channel.
 
      ⚠️⚠️ THE FULL NAME IS LOAD-BEARING. There are TWO Lizbeth Gonzalezes:
-     **Lizbeth Gonzalez Ramos** is the Assistant Director who owns cleaning, and
+     **Lizbeth** is the Assistant Director who owns cleaning, and
      **Lizbeth Gonzalez** is a different person on the trainer roster. Matt had
      to correct me on this. `slackIdForName` matches on first name + last
      initial, so "Lizbeth Gonzalez" is AMBIGUOUS across the two and correctly
@@ -6164,7 +6164,7 @@ async function runDailyAiSummary(env) {
    `gcfcr-hr-info` map (per-person rows, own-row-only reads); this seed
    backfills it once (job `emails-migrate`) and is the last-resort lookup.
    ⚠️ FIX AN ADDRESS IN HR CONSOLE, NOT HERE — hr-info wins over this seed
-   everywhere. id 22 (Julie Renshaw) has no email on file; not an omission. */
+   everywhere. id 22 (Julie) has no email on file; not an omission. */
 
 /* The HR and Bri summary copies are constants HERE, no longer trusted from the
    request body — a request could previously name ANY address as "the HR copy"
@@ -6538,7 +6538,7 @@ const PUSH_ON_HR = {
    still the source of truth. Do not remove the post in favour of this.        */
 const L10_ATTENDEE_KEY = "eos:l10-attendees";
 /* ⚠️ A FALLBACK THAT MUST NOT OUTLIVE ITS PEOPLE (Aug 5 2026 sweep).
-   Kyleeka Gonzalez was in this list and came out with her Aug 4 removal from the
+   Kyleeka was in this list and came out with her Aug 4 removal from the
    EOS board. It was not firing: `eos:l10-attendees` holds the live three and the
    stored list wins. But a fallback is only ever read on the day something has
    gone wrong, and handing a departed director a push on exactly that day is the
@@ -6612,7 +6612,7 @@ async function pushToPerson(env, name, payloadObj, uid) {
          compares a first name plus the INITIAL of the second token. Across the
          real 106-person roster that gives exactly one colliding pair, and they
          are two different real people: `tm26 Lizbeth Gonzalez` (Team Leader)
-         and `tm27 Lizbeth Gonzalez Ramos` (Assistant Director). So an injury
+         and `tm27 Lizbeth` (Assistant Director). So an injury
          report or a file entry filed on one of them buzzed BOTH their phones
          with "Injury report filed — please see a director."
          ⚠️ NO NAME FALLBACK WHEN AN ID WAS GIVEN. Falling back would restore
@@ -7119,7 +7119,7 @@ async function quietPeople(env, now, days = 7) {
      map cannot be read, this degrades to exactly the old behaviour rather than
      clearing everybody or nobody. */
   /* ⚠️ PUNCTUATION IS FOLDED, CHECKED AGAINST THE REAL WEEK. Daisy signs in as
-     "Daisy Hernandez Espitia" and her submission is filed "Daisy
+     "Daisy" and her submission is filed "Daisy
      Hernandez-Espitia" — the same person and the same words, separated by one
      hyphen. Folding it fixes her. It does NOT loosen anything that matters:
      "Maria Garcia" still fails to match "Maria Garcia-Perez", because those are
@@ -7385,7 +7385,7 @@ async function runAdoptionCheck(env) {
      The first version of this job compared normalised NAMES exactly and
      produced two false positives on its very first run: the rota says
      "Jose Arias" while his subscription says "Jose Arias Cortez", and the
-     seat says "Lizy Gonzalez" while hers says "Lizbeth Gonzalez Ramos".
+     seat says "Lizy Gonzalez" while hers says "Lizbeth".
      Both were reachable; both were reported to Bri as missing. Telling a
      director to chase someone who already did it is how this job loses
      credibility on day one.
@@ -7413,7 +7413,7 @@ async function runAdoptionCheck(env) {
      through to names — which is how the false positives happened. Strip it
      on both sides.
      ★ AND THE ID PATH IS NOT A NICETY HERE: the roster holds BOTH
-     `tm26 Lizbeth Gonzalez` and `tm27 Lizbeth Gonzalez Ramos`, two different
+     `tm26 Lizbeth Gonzalez` and `tm27 Lizbeth`, two different
      real people, and `sameLeader` matches them to EACH OTHER (same first
      name, same last initial). For anyone with an id, the id is the only
      safe answer.
@@ -8011,13 +8011,13 @@ async function slackDmIsLeader(env, dest) {
 
        WHY. This matched the Slack display name against the HR roster name and
        required them to be identical once normalised. They are not:
-         · Slack "Lizy Gonzalez Ramos"  vs  HR "Lizbeth Gonzalez Ramos"
+         · Slack "Lizy Gonzalez Ramos"  vs  HR "Lizbeth"
          · Slack "Ben Smith"            vs  HR "Benjamin Smith"
        A leader whose Slack name is a nickname or a shortening could not be
        messaged by the bot at all. That is most people, eventually.
 
        ⚠️ THE FIX IS MORE ALIASES, NOT LOOSER MATCHING. First-name-plus-initial
-       would pull "Lizbeth Gonzalez" and "Lizbeth Gonzalez Ramos" onto the same
+       would pull "Lizbeth Gonzalez" and "Lizbeth" onto the same
        key — two different real people this repo has already confused once — so
        matching stays EXACT and the set of names a person answers to gets wider
        instead. `gcfcr-hr-preferred-v1` is the "Goes by" box in HR Console, so
@@ -9424,7 +9424,7 @@ export default {
                 about not letting a signed-in person choose an arbitrary
                 destination, and then three tiles handed one over anyway. It
                 passed the allowlist because OUR ids were on the allowlist.
-             2. A second store's Goal Submissions DM'd Bri Moore.
+             2. A second store's Goal Submissions DM'd Bri.
 
            Now the tile says WHY it is messaging ("leadership", "owner") and the
            recipient is resolved here from gcfcr-notify-targets-v1, the same
@@ -11420,7 +11420,7 @@ export default {
            IPO variances disclose nothing marginal. It is wrong here: the ipo tile is
            tier 3 with no allow and no allowIds, so canUseTool is false on all three
            arms for that title. It let someone WRITE a tile they cannot OPEN, and
-           broke an invariant hrRoster.js states outright — "Cindy Dunning reads
+           broke an invariant hrRoster.js states outright — "Cindy reads
            every file but was never granted a single write power".
            ⚠️ Latent, not live: nobody holds the title "Payroll" today (checked the
            live roles map, 0 of 106). It arms the day somebody is given it, which is
@@ -11457,8 +11457,8 @@ export default {
            test "would also admit Leadership Development Director, which is below
            the line Matt drew". This route used that exact rank test, so the API
            handed the pay groups and multipliers to two real people whose own tab
-           refuses to render them — Bri Moore (Leadership Development Director,
-           rank 6) and Cindy Dunning (Accounts Payable, rank 7; the tab wants
+           refuses to render them — Bri (Leadership Development Director,
+           rank 6) and Cindy (Accounts Payable, rank 7; the tab wants
            "Payroll"). Both confirmed against the live roles map, not inferred.
            ⚠️ NOW ONE DEFINITION, IMPORTED FROM THE SAME LEAF THE TAB USES. A
            gate written twice is a gate that drifts, and this one already had. */

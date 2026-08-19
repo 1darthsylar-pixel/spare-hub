@@ -102,7 +102,7 @@ ok("a closed date has no stations at all", stationsForDate(STATIONS, CFG, "2026-
 /* ── the back of house opens the building ────────────────────────────────
    🐛🐛 THE FIRST VERSION CUT EVERY STATION TO THE OPENING TIME, AND HIS OWN
    LABOR DAY ROSTER DISPROVED IT WITHIN THE HOUR. The real Sep 7 report has
-   **Ana Turcios on Prep from 8:00 AM** on a day the store opens at 10:30.
+   **Ana on Prep from 8:00 AM** on a day the store opens at 10:30.
    Clamping her to 10:30 deletes two and a half hours of prep from a holiday
    and nobody sees it until the morning. */
 {

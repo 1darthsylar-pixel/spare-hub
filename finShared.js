@@ -15,8 +15,8 @@ export const LAST_TAB_KEY = "gcfcr-financials-last-tab";
 
    Measured against the live roster, the gap admitted two real people the screen
    deliberately hides:
-     · Bri Moore — Leadership Development Director, rank 6
-     · Cindy Dunning — Accounts Payable, rank 7 (the tab wants "Payroll")
+     · Bri — Leadership Development Director, rank 6
+     · Cindy — Accounts Payable, rank 7 (the tab wants "Payroll")
    Both could fetch the pay groups and multipliers from the API that their own
    Profit Share tab refuses to render.
 
@@ -32,7 +32,7 @@ export const canSeeProfitShare = (role) =>
   PROFIT_ROLES.includes(String(role || "").trim());
 
 /* ── DIRECTORS (Matt, Aug 10 2026) ─────────────────────────────────────────
-   Looking at Brandon McDowell's phone: "Director should see these things but
+   Looking at Brandon's phone: "Director should see these things but
    just not the profit share or PTO. The other things in financial though."
 
    ★ WHY A DIRECTOR COULD NOT SEE THEM. Director is rank 5 and roleTier only

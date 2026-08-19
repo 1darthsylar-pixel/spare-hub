@@ -157,7 +157,7 @@ export function mapJobTitle(job, titleOptions) {
      "Acuna, Jessica V (Jessica)"         → Jessica Acuna
      "Aguilar Vega, Marelyn G"            → Marelyn Aguilar Vega     (2-word surname)
      "Anchecta Castillo, Salvador Daniel" → Salvador Daniel Anchecta Castillo
-     "Jackson, Lindsay (Hannah)"          → Hannah Jackson           (preferred wins)
+     "Jackson, Lindsay (Hannah)"          → Hannah           (preferred wins)
      "DeBrew, Christian I (Isaiah)"       → Isaiah DeBrew            (preferred wins)
 
    ⚠️ THE PREFERRED NAME IS THE REAL NAME HERE. Twenty-one rows carry one, and
@@ -210,12 +210,12 @@ export function nameVariants(raw) {
    🐛 THE CASE THAT MADE THIS NECESSARY. Checked against the real export on
    Aug 6 2026, two of the seven "new" people were already on the roster:
 
-     "Moore, Brianna"          → the Hub has Bri Moore, id 17
+     "Moore, Brianna"          → the Hub has Bri, id 17
      "Parra Gonazlez, Paola"   → the Hub has Paola Parra Gonzalez, id 42
                                  (CFA Home has the surname misspelled)
 
    Neither is an exact match under any variant, so an add-only box that trusted
-   exact matching alone would have created a SECOND Bri Moore. She is the
+   exact matching alone would have created a SECOND Bri. She is the
    Leadership Development Director; the duplicate would carry a fresh n_ id that
    is not in HR_CONSOLE_PEOPLE, so the copy could not open the console her own
    record grants her.

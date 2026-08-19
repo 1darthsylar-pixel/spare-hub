@@ -58,7 +58,7 @@
 
        "PRIMARY GATE = SLACK USER ID. Slack IDs never change; display names do,
         and a name-string gate is what silently locked Bri out of her own admin
-        panel (the Hub knew her as 'Bri Moore', the gate wanted 'Brianna
+        panel (the Hub knew her as 'Bri', the gate wanted 'Brianna
         Moore')."
 
    Names are the FALLBACK on purpose. This change moves the list, not the
@@ -520,7 +520,7 @@ const CONFIG = {
 
      ⚠️ `holder` IS FOR HUMANS, `holderId` IS THE ROUTE. The display name drifts
      and the roster id does not — the chart says "Lizy Gonzalez" where HR says
-     "Lizbeth Gonzalez Ramos", one person, two spellings. Route on the id.
+     "Lizbeth", one person, two spellings. Route on the id.
 
      ⚠️⚠️ NOBODY IS A REAL ANSWER, AND SEVEN OF THESE ARE NOBODY. Matt asked
      for that explicitly, and it is the honest state: the Hub can only route to
@@ -1330,7 +1330,7 @@ export function handbookExemptIds() {
    and six entries make `includes` free. It also cannot be poisoned by a stray
    .add() the way one exported Set behind four gates could.
 
-   Lower-cased on the way out so a store that types "Matt Jackson" into its
+   Lower-cased on the way out so a store that types "Matt" into its
    settings matches a call site that has already lowercased the viewer. */
 export function adminNames(tile) {
   const v = ownPeopleList(`owners.adminNames.${tile}`, []);

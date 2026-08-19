@@ -61,7 +61,7 @@
 import { sameLeader, normName } from "./nameMatch.js";
 
 /* Board cells write short names — "Adriana C", "Benjamin S", "Ana". The roster
-   holds "Adriana Carrera Reyes". `sameLeader` is the repo's existing answer to
+   holds "Adriana". `sameLeader` is the repo's existing answer to
    exactly that and its own comment names the board reconciliation as one of
    its two legitimate callers. Not re-implemented here (rule 8). */
 
@@ -191,7 +191,7 @@ export function stationLoad(boards, { coreAt = 0.8 } = {}) {
    ⚠️ NAMES IN, IDS OUT. Board cells are short names and every record in the
    Hub is keyed by roster id. The match is `sameLeader`, and TWO ROSTER PEOPLE
    MATCHING ONE BOARD NAME MATCHES NEITHER — this roster holds a Lizbeth
-   Gonzalez and a Lizbeth Gonzalez Ramos, and a board cell reading "Lizbeth"
+   Gonzalez and a Lizbeth, and a board cell reading "Lizbeth"
    genuinely does not say which. A miss costs a hint; a wrong match puts one
    person's history onto another person's shift.
 

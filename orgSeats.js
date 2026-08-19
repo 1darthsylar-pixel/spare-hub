@@ -25,7 +25,7 @@
 
    ⚠️ `holderId` IS THE DURABLE KEY — it is the HR roster id from
    `gcfcr-hr-team-v1`. The display name is for humans and WILL drift
-   (the chart says "Lizy Gonzalez", HR says "Lizbeth Gonzalez Ramos",
+   (the chart says "Lizy Gonzalez", HR says "Lizbeth",
    both are one person). Route on the id; never match on the name.
    ═══════════════════════════════════════════════════════════════════ */
 

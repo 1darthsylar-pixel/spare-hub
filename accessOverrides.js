@@ -40,7 +40,7 @@ const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
    asked and when. This list silently reduces what a real person can see, so it
    must never be edited casually or to "tidy up". */
 /* ── HISTORY, KEPT ON PURPOSE ──────────────────────────────────────────────
-   Jul 28 2026 — Kyleeka Gonzalez was added here at Hannah's and Bri's request,
+   Jul 28 2026 — Kyleeka was added here at Hannah's and Bri's request,
    judged as a Team Member everywhere while her HR record stayed Executive
    Director.
    Jul 29 2026 — REMOVED. Kyleeka asked for it back; Hannah, Bri and Matt agreed

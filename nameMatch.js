@@ -51,7 +51,7 @@ const initialOf = (part) => normName(String(part || "").charAt(0));
  * ⚠️ THIS RULE CANNOT SEPARATE THE TWO LIZBETHS, AND THAT IS NOW WRITTEN DOWN
  * RATHER THAN DENIED (Aug 9 2026 sweep, finding 7). The comment that used to
  * sit here claimed it kept "Lizbeth Gonzalez (Team Leader) separate from
- * Lizbeth Gonzalez Ramos (AD)". It never did: both second tokens are
+ * Lizbeth (AD)". It never did: both second tokens are
  * "Gonzalez", so it returns TRUE in both directions. I ran it. An assertion of
  * safety is what stopped anyone looking.
  *
@@ -80,7 +80,7 @@ export function sameLeader(dirName, viewerName) {
  * Same as above for the first name, and if either side is first-name-only that
  * still suffices — dropping that would orphan every older first-name record.
  * Otherwise EVERY surname token must match position by position AND the counts
- * must be equal, so "Lizbeth Gonzalez" and "Lizbeth Gonzalez Ramos" are two
+ * must be equal, so "Lizbeth Gonzalez" and "Lizbeth" are two
  * people. A lone initial still matches the word it abbreviates, so "Hannah S"
  * finds "Hannah Smith".
  *
@@ -93,7 +93,7 @@ export function sameLeader(dirName, viewerName) {
  * a wrong match hands a confidential recommendation to the wrong leader.
  *
  * ⚠️ THE COUNT TEST CANNOT BE FREE IN PRINCIPLE, SO IT WAS MEASURED.
- * "Tashiana Cortes" versus "Tashiana Cortes Campos" is one person written two
+ * "Tashiana" versus "Tashiana" is one person written two
  * ways and is the SAME SHAPE as the two Lizbeths; no string rule gets both
  * right. Across all 106 roster names there is EXACTLY ONE pair where one name
  * is a prefix of another, and it is the two Lizbeths. Tashiana and Jose are
@@ -116,7 +116,7 @@ export function sameLeaderStrict(dirName, viewerName) {
  *
  * ★ TWO TIERS, STRICT FIRST. Matt, Aug 9 2026: "We have alot of Hispanic
  * workers and this is very common." Spanish names carry two surnames — a
- * paternal then a maternal — so "Lizbeth Gonzalez Ramos" written as "Lizbeth
+ * paternal then a maternal — so "Lizbeth" written as "Lizbeth
  * Gonzalez" is the ORDINARY case here, not an edge case. A rule that refuses
  * every short form would quietly hide real recommendation requests from a
  * large part of this store, and nobody would report it for weeks.
@@ -215,7 +215,7 @@ export function recMatches(rec, viewer, leaders) {
 /**
  * Slack user id for a roster name.
  * `idByName` is keyed on Slack's version of a name; the roster has its own —
- * Slack says "Tashiana Cortes", HR says "Tashiana Cortes Campos". Exact first,
+ * Slack says "Tashiana", HR says "Tashiana". Exact first,
  * then the looser first+initial forms, and NULL rather than a guess when two
  * people could answer to the same key.
  */

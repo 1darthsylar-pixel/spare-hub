@@ -82,7 +82,7 @@ const CFG = {
    skipped, and it is the same wrong-person family closed all week.
    ⚠️ WRITING FULL NAMES WOULD NOT HAVE FIXED IT. I checked slackIdFor: it tries
    the full key, then falls back to first+initial, then to the bare first name.
-   "Hannah Jackson" still lands on their Hannah. The format was never the
+   "Hannah" still lands on their Hannah. The format was never the
    problem — the NAME being Gate City's, in code, was.
    ⇒ Resolve by CONFIG KEY instead. The worker injects notifyTarget, the same
    door twelve other call sites already use, so each store names its own people

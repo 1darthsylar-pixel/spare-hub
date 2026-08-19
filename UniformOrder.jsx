@@ -255,7 +255,7 @@ export function buildOrder(o) {
 /* 🐛 IT MUST BE PARSED. `gcfcr-access-user` holds JSON.stringify(person), not a
    name — App.jsx writes it that way in two places. Reading it as a plain string
    put the WHOLE BLOB in the box, so an order filed as
-   {"id":"20","name":"Daisy Hernandez Espitia","role":"Director",...} instead of
+   {"id":"20","name":"Daisy","role":"Director",...} instead of
    a person, and Hannah would have been fulfilling it.
    ⚠️ canEditCatalog() TEN LINES ABOVE ALREADY DOES THIS CORRECTLY. Two readers
    of one key in one file and only one of them right is the whole reason this

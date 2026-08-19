@@ -25,7 +25,7 @@ const PDF_BASE = "/docs/";  // served by worker.js → hub-assets (clean gatecit
 
 // Both of Bri's spellings, like every sibling allow-list (MemberVote,
 // TeamGoals, GoalSubmissions, TeamDirectory) — this file alone carried only
-// "brianna moore", so a "Bri Moore" sign-in was locked out of editing here
+// "brianna moore", so a "Bri" sign-in was locked out of editing here
 // while every other tool let her in. Caught by the hardcoded-people census.
 /* ★ THE NAME LIST NOW COMES FROM storeConfig — owners.adminNames.teamResources.
    ⚠️ THIS IS THE LONGEST OF THE FOUR AND STAYS THAT WAY. Six entries, because

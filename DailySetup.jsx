@@ -620,7 +620,7 @@ function abbrevTitle(title) {
    correct in HR, but not translating to the setup.").
    `if (!url) return;` skipped somebody with no picture BEFORE their name keys
    were registered, so they never contributed a clash. Adriana Arias Hurtado and
-   Adriana Carrera Reyes both key to "adriana"; one had a Slack photo and one did
+   Adriana both key to "adriana"; one had a Slack photo and one did
    not, so "adriana" resolved to the one face and the other Adriana's cell drew
    it. Two people, one picture, and the board looked perfectly normal.
    ⚠️ AMBIGUITY IS A PROPERTY OF THE ROSTER, NOT OF WHO HAPPENS TO HAVE A PHOTO.
@@ -1469,7 +1469,7 @@ function rosterEntryString(p) {
 
 /* ── THE DAY'S PEOPLE, WITH IDENTITY ──────────────────────────────────────
    ★ THE INFORMATION ALREADY EXISTS AND WAS BEING THROWN AWAY. The schedule
-   import carries FULL names — "Lizbeth Gonzalez Ramos" — and the roster holds
+   import carries FULL names — "Lizbeth" — and the roster holds
    the same person with an id. That pairing is unambiguous. Then the board
    writes the CELL as "Lizbeth", and from that moment nothing downstream can
    tell the two Lizbeths apart: not the push routes, not the input register,
@@ -1484,7 +1484,7 @@ function rosterEntryString(p) {
    ⚠️ AN UNRESOLVED NAME STORES `null`, NEVER A GUESS. resolveLeaderId is the
    two-tier matcher: exact shape first, and the short form only if nothing
    matched exactly — two candidates always return null. HotSchedules spells
-   some people differently from HR ("Tashiana Cortes" vs "Tashiana Cortes
+   some people differently from HR ("Tashiana" vs "Tashiana
    Campos"), so a few will resolve to null every import. That is correct and
    expected: those fall back to today's name matching. Never wrong, sometimes
    absent.
@@ -4335,7 +4335,7 @@ const printCss = `
 
    ⚠️ IT NEVER GUESSES A STATION. myDayOnBoard hands back `sharedWith` when the
    viewer's first name belongs to more than one person on that side, and this
-   renders the reason instead of a row. Telling Adriana Carrera Reyes she is on
+   renders the reason instead of a row. Telling Adriana she is on
    Adriana Arias Hurtado's station is worse than making her scroll, because she
    would believe it and go and stand there.
 

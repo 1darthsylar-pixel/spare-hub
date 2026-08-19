@@ -86,7 +86,7 @@ function StoredImg({ value, style }) {
 }
 
 
-// Same fix as ProfessionalGrowth — the Hub knows Bri as "Bri Moore".
+// Same fix as ProfessionalGrowth — the Hub knows Bri as "Bri".
 // This is the by-name half of BOTH powers on this page now: editing the goals
 // and marking them met, in progress or unmet. Until Jul 30 2026 editing sat on
 // a much wider role list and only the outcome was held here; Bri's ruling

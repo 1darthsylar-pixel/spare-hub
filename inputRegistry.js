@@ -68,7 +68,7 @@ export const OWNER = {
    🐛 Lupe's two food-quality rows matched NOBODY. ownsRow routes a person
    owner through isOwner, which requires the FIRST NAMES to be equal after
    normalising. The register said "Lupe Villanueva"; the roster says
-   "Guadalupe Escamilla Villanueva". normName("guadalupe") !== normName("lupe"),
+   "Guadalupe". normName("guadalupe") !== normName("lupe"),
    so the only person the rows were written for never saw them, and the late
    push (inputPush → planPush → forPerson → ownsRow) never fired either. Both
    rows surfaced only for Matt through the overseer short-circuit, which reads
@@ -118,7 +118,7 @@ const seatOwner = (seatId) => {
   if (!name) return null;
   /* ⚠️ THE LABEL AND THE SPELLINGS COME FROM THE SEAT TOO, and the first
      version of this took them as arguments — which put "Lupe" and
-     "Guadalupe Escamilla Villanueva" straight back into this file as literals.
+     "Guadalupe" straight back into this file as literals.
      Passing a name in to avoid hardcoding a name is not a fix. The short label
      is the holder's first name, and `alsoKnownAs` is a field on the seat row
      because a spelling variant belongs with the person, not with one of the
@@ -1911,7 +1911,7 @@ export function buildRows({ daily, pulse, extras, moneyGaps, now = new Date() } 
 
   /* ── FOOD SAFETY IS ROUTED BY THE ROTA, NOT BY THE BOARD ──────────
    * 🐛 Matt, Jul 29: "Why is food safety waiting on me?" It was not. The rota
-   * had assigned Lizbeth Gonzalez that morning and Julie Renshaw the day before
+   * had assigned Lizbeth Gonzalez that morning and Julie the day before
    * — real people, no fallback, working exactly as built. The rota and the
    * input register had simply never been introduced to each other, so `ownsRow`
    * asked who owned the row, got nothing back, and fell through to the

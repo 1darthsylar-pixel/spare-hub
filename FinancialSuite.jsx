@@ -64,7 +64,7 @@ const canSeeProfitShare = (u) => sharedCanSeeProfitShare(u && u.role);
    is Kyleeka (23), so any role-based test that admits him admits her too. Ids
    are the only thing that expresses "these two people". Same reason
    OnboardingLauncher singles Nick out by id.
-   33 = Matt Jackson (Executive Director) · 37 = Nick Matthews (Owner).
+   33 = Matt (Executive Director) · 37 = Nick (Owner).
    Consequence: this does NOT follow the role. If either person leaves or the
    Executive Director seat changes hands, edit access has to be changed here. */
 /* ★★ THE IDS MOVED TO storeConfig.js AS owners.profitEdit (Aug 11 2026), with

@@ -867,9 +867,9 @@ const periodLabel = () => {
   return (m === "07" ? "1 July " : "1 January ") + y;
 };
 // Members not required to sign either handbook (owner/exec — Matt, Jul 18:
-// don't require Nick Matthews (37), Kyleeka Gonzalez (23)).
+// don't require Nick (37), Kyleeka (23)).
 // Excluded from the signed/total counts, the unsigned pulse, and the status view.
-// Cindy Dunning (90) was REMOVED from this list Jul 22 2026 at Hannah's request
+// Cindy (90) was REMOVED from this list Jul 22 2026 at Hannah's request
 // — she is now expected to sign like everyone else. Until she does, she counts
 // as outstanding, which is correct: the Hub records signatures people actually
 // give, it does not mark anyone signed on their behalf.
@@ -895,7 +895,7 @@ function Av({ name, src, style }) {
   if (src && !bad) return <img src={src} alt="" onError={() => setBad(true)} style={{ ...style, objectFit: "cover" }} />;
   return <div style={style}>{ini(name)}</div>;
 }
-/* ── PAYROLL (Cindy Dunning, Office Manager) ──
+/* ── PAYROLL (Cindy, Office Manager) ──
    An ACCESS CLASS, not a rung on the ladder. Payroll needs to READ every file
    (comp, hours, PTO, final checks) but was never granted a single write power.
    The ladder cannot express that: FULL_MIN, DIRECTOR_MIN, LDD_MIN, HREXEC_MIN,
@@ -997,7 +997,7 @@ const isAddedId = (id) => String(id).startsWith("n_");
    the rule outright — "DO NOT 'SIMPLIFY' THIS BACK TO A RANK. The next Director
    added must not inherit HR Console by holding a title" — and these three were
    the places that had.
-   ⇒ Kyleeka Gonzalez is an Executive Director, rank 7, and Hannah's instruction
+   ⇒ Kyleeka is an Executive Director, rank 7, and Hannah's instruction
    was explicit: "I do not want Kyleeka to see into HR console." She could add
    people to the roster, browse the terminated archive, and open any profile.
    Daisy and Brandon hold the Director title (rank 5) for their other tools and
@@ -2086,7 +2086,7 @@ function HRConsole({ launchers = [] }) {
       }
     }
     /* ⚠️ THE FILER'S OWN NAME, ALWAYS. Counseling entries used to stamp
-       "Hannah Jackson · Human Resources" no matter who filed them — a false
+       "Hannah · Human Resources" no matter who filed them — a false
        attribution on a permanent record whenever anyone else did, and a name
        that would outlive her seat. The HR label stays (counseling IS issued
        under HR authority); the person is whoever actually filed it, which is

@@ -60,7 +60,7 @@ const DIR_KEY = "gc-team-directory-v1";
 const DOC_BUCKET = "hr-files";
 
 // Name allowlist PLUS a role fallback. Name-only gating silently locked Bri out
-// of her own admin panel: the Hub knows her as "Bri Moore", not "Brianna Moore".
+// of her own admin panel: the Hub knows her as "Bri", not "Brianna Moore".
 // The role fallback is the durable fix — a newly-appointed LD Director inherits
 // access automatically, and a name change can't lock the owner out again.
 // Hannah, Jul 25: "I need access to see application submissions on peak
@@ -309,7 +309,7 @@ const DEFAULT_CONFIG = {
      still naming a person from the browser. GoalSubmissions, L101Week and
      WasteTracker were all converted on Aug 7; this one was missed, so every
      Expression of Interest and promotion application at a SECOND store would
-     have DM'd Bri Moore here, or 404'd and died in the notify log.
+     have DM'd Bri here, or 404'd and died in the notify log.
      ⚠️ BLANK NOW, AND BLANK MEANS "ROUTE BY PURPOSE" — the worker resolves
      `to: "leadership"` from that store's own config. Kept as an optional
      override so an operator can still point it somewhere specific from the
@@ -1246,7 +1246,7 @@ function RecStep({ sd, locked, leaders, onChange, onRequest, onWithdraw = () => 
        · two leaders who genuinely share a name are indistinguishable —
          `leaders.find(x => x.name === sel)` returns whichever comes first;
        · the roster really does hold near-collisions (tm26 Lizbeth Gonzalez
-         and tm27 Lizbeth Gonzalez Ramos are two different people).
+         and tm27 Lizbeth are two different people).
      Every rec already carries `leaderId`; it just wasn't being used here.
      Leaders without an hrId keep the old name behaviour rather than
      disappearing from the list. */

@@ -58,7 +58,7 @@ export default function TeamImportBox({ roster, titleOptions, S, onAdd }) {
     const p = planImport(parsed.rows, roster, titleOptions);
     /* ⚠️ A ROW STARTS UNTICKED WHEN ANYTHING IS UNCERTAIN. Two of the seven
        "new" people in the real Aug 6 export were already on the roster under a
-       different spelling (Brianna Moore is Bri Moore; CFA Home misspells Paola
+       different spelling (Brianna Moore is Bri; CFA Home misspells Paola
        Parra Gonzalez). Defaulting those ON would have created a duplicate for
        the person who runs this console. An unknown job title starts off for the
        same reason — the title sets the rank, and the rank opens HR files. */
@@ -116,7 +116,7 @@ export default function TeamImportBox({ roster, titleOptions, S, onAdd }) {
      nothing on screen would have said why. The confirmation names them.
 
      ⚠️⚠️ RANK ALONE IS NOT ENOUGH, AND hrRoster.js SAYS SO IN ITS OWN WORDS:
-     "PAYROLL IS RANK 1 AND JOINS BY NAME, NOT BY RANK. Cindy Dunning reads
+     "PAYROLL IS RANK 1 AND JOINS BY NAME, NOT BY RANK. Cindy reads
      every file but was never granted a single write power, and the ladder
      cannot express that." A rank test therefore hands a claim code to the one
      person who can read all 106 personnel files. Caught by running this against

@@ -143,7 +143,7 @@ export function nameFromExport(raw) {
     s = `${first || ""} ${last || ""}`.trim();
   }
   /* ⚠️ A TRAILING ALL-DIGITS TOKEN IS NOT PART OF A NAME. The staff export
-     writes one person as "Nick Matthews 04010" — the store number stapled on —
+     writes one person as "Nick 04010" — the store number stapled on —
      which then matches nobody on the roster and reads as a missing person
      rather than a formatting artefact. Dropped generically rather than by
      matching this store's number, which would be rule 18 all over again. */

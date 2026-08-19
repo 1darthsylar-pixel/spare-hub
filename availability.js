@@ -52,7 +52,7 @@ import { parseRanges } from "./shiftHours.js";
 import { normName } from "./nameMatch.js";
 /* ⚠️ ONE DEFINITION OF "read a person's name out of a HotSchedules export".
    `nameFromExport` already drops a trailing all-digits token, which is why
-   "Nick Matthews 04010" exists in these files — the store number stapled onto
+   "Nick 04010" exists in these files — the store number stapled onto
    a name. It was written for the salary export; the availability report has
    the same artefact, and a second copy here would drift on exactly the names
    hardest to notice. payRates.js imports only nameMatch.js, so this adds no
@@ -348,12 +348,12 @@ export function parseAvailabilityCsv(text) {
     const line = table[r];
     /* ⚠️ CLEANED THE SAME WAY EVERY OTHER EXPORT IS. Measured against the real
        report and the real roster: 93 of 100 names matched raw, and
-       "Nick Matthews 04010" was one of the seven that did not — a formatting
+       "Nick 04010" was one of the seven that did not — a formatting
        artefact reading as a missing person.
        ⚠️ THE OTHER SIX ARE LEFT TO THE UNMATCHED REPORT ON PURPOSE. They are
        nickname and spelling differences (Bri vs Brianna, Cindy vs Cynthia,
        Ally vs Allysen, one typo) and this roster carries BOTH
-       "Lizbeth Gonzalez" and "Lizbeth Gonzalez Ramos" as two different people.
+       "Lizbeth Gonzalez" and "Lizbeth" as two different people.
        nameMatch.js is explicit that ambiguity resolves to no match, never to a
        guess, and a wrong guess here writes one person's hours onto another. */
     const name = nameFromExport(String(line[0] || "").trim());
@@ -519,12 +519,12 @@ export function parseSchoolMembers(text) {
 /* HotSchedules exports the LEGAL name. The Hub roster carries the name the
    store actually uses. Those are the same person and nothing in the data says
    so, which is why four people fell out of a clean skills import on Aug 13
-   2026: Allysen/Ally Hardie, Brianna/Bri Moore, and Paola Parra Gonazlez,
+   2026: Allysen/Ally Hardie, Brianna/Bri, and Paola Parra Gonazlez,
    whose own HotSchedules record has two letters transposed.
 
    ⚠️⚠️ THE FIX IS AN ALIAS A LEADER TYPES, NOT A LOOSER MATCHER, AND THE
    DIFFERENCE MATTERS. Widening the rule to catch Bri/Brianna would also merge
-   this roster's `Lizbeth Gonzalez` and `Lizbeth Gonzalez Ramos`, who are two
+   this roster's `Lizbeth Gonzalez` and `Lizbeth`, who are two
    different people — nameMatch.js has a warning saying its permissive rule
    already cannot separate them. So the miss stays a miss until a human says
    who it is, and then that answer is remembered. Ambiguity is never guessed;
