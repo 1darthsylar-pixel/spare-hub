@@ -240,6 +240,66 @@ const HEALTHY = {
     HELD_FILE === ".github/branches-held.txt", HELD_FILE);
 }
 
+{
+  /* ── ⛔⛔ THE SQUASH-MERGE CASE, DRIVEN THROUGH A REAL REPOSITORY ─────────
+     This is the one the first version got wrong, and no amount of plain-data
+     testing above would have caught it, because the bug was in HOW the command
+     line half asks git — not in what `findingsFor` does with the answer.
+
+     A squash merge leaves the merge base where it was. So "what this branch
+     added since it split" stays non-empty for ever, even after every byte has
+     landed on the base. A branch merged four minutes ago and not auto-deleted
+     read as BOTH CHANGED — the duplicate-work alarm — instead of ALREADY ON.
+
+     ⇒ Found on spare-hub, minutes after merging three real pull requests.
+     ⇒ So this builds an actual repository, squash-merges a branch into main,
+     and runs the real script against it. */
+  const { execFileSync } = await import("node:child_process");
+  const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const nodePath = await import("node:path");
+  const here = nodePath.dirname(new URL(import.meta.url).pathname);
+
+  const repo = mkdtempSync(nodePath.join(tmpdir(), "branchwatch-"));
+  const g = (...a) => execFileSync("git", a, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  let out = "";
+  try {
+    g("init", "-q", "-b", "main");
+    g("config", "user.email", "t@example.invalid");
+    g("config", "user.name", "t");
+    writeFileSync(nodePath.join(repo, "a.txt"), "one\n");
+    g("add", "-A"); g("commit", "-qm", "first");
+
+    g("checkout", "-q", "-b", "feature");
+    writeFileSync(nodePath.join(repo, "a.txt"), "one\ntwo\n");
+    g("add", "-A"); g("commit", "-qm", "the work");
+
+    /* Squash it in, exactly as GitHub does: one new commit on main carrying the
+       content, and the branch left pointing where it was. */
+    g("checkout", "-q", "main");
+    g("merge", "--squash", "feature");
+    g("commit", "-qm", "the work (#1)");
+
+    /* The script reads `origin/*` refs, so give it an origin that is this repo. */
+    g("remote", "add", "origin", repo);
+    g("fetch", "-q", "origin", "+refs/heads/*:refs/remotes/origin/*");
+
+    out = execFileSync(process.execPath, [nodePath.join(here, "branchWatch.mjs")],
+      { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  } catch (e) {
+    out = `THREW: ${e.message}`;
+  }
+
+  ok("★★ A CONTROL: the throwaway repo really was built and read (control)",
+    /1 branch\(es\) beside main/.test(out), out.trim().split("\n")[0]);
+  ok("★★ A SQUASH-MERGED BRANCH READS AS ALREADY ON, NOT AS UNSHIPPED WORK",
+    /ALREADY ON/.test(out), out.replace(/\n/g, " | ").slice(0, 220));
+  ok("★★ AND IT IS NOT REPORTED AS A DUPLICATE-WORK LEAD, which is what it did before",
+    !/BOTH CHANGED/.test(out), out.replace(/\n/g, " | ").slice(0, 220));
+
+  try { rmSync(repo, { recursive: true, force: true }); } catch { /* gone */ }
+}
+
 /* ⛔ THE SUMMARY GOES LAST. Anything added below this line still runs, still
    passes, and can never fail the build. Add blocks above it. */
 if (fails.length) {
