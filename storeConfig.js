@@ -1057,11 +1057,14 @@ export const STORE = Object.freeze({
    one mutable object behind every gate in the app. Five entries, so `includes`
    costs nothing and cannot be poisoned. */
 export const ADMIN_SLACK_IDS = Object.freeze([
-  "U073LJ603NK", // Bri Moore — Leadership Development Director
-  "U03KUCTRKMF", // Matt Jackson — Executive Director
-  "U03K14T5H47", // Hannah Jackson — Executive Director | HR
-  "U0ALYBFGP4K", // Kyleeka Gonzalez — Executive Director
-  "U03K1A81PL7", // Nick Matthews — Owner/Operator
+  /* ⛔ EMPTIED Aug 19 2026. These were the ORIGIN store's five Slack user ids,
+     and `isAdminSlackId` below is a plain `includes` on the true branch of the
+     admin check in five screens — so five people at another store were admins
+     here, in this store's own built bundle.
+     ⚠️ EMPTY IS A WORKING STATE: the id door never opens. adminRoles.js is the
+     role door and the lists under owners.* are the name door, and both work.
+     ⛔ NEVER PASTE ANOTHER STORE'S IDS IN HERE. Add this store's own or leave
+     it empty. */
 ]);
 
 /** True when this Slack id belongs to a store admin. Falsy id → false, never a
