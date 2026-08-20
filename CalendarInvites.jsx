@@ -10,6 +10,7 @@ import { hubToken } from "./store.js";
 import {
   eventList, upcomingEvents, awaitingReply, attendance, replyStatus, replyMap, durationText, joinDuration,
   clashesFor, busyItems,
+  invitePickList,
   INVITED, ACCEPTED, DECLINED,
 } from "./calendarStore.js";
 import { bareId, sameId } from "./nameMatch.js";
@@ -123,6 +124,7 @@ export default function CalendarInvites({ viewer }) {
      sentence is "they can push the invite anyway if they choose", so there is
      no path here that refuses. */
   const [clash, setClash] = useState(null);
+  const [pickQuery, setPickQuery] = useState("");   // Lineup's one box, over the invite list
   const [moveTo, setMoveTo] = useState({});
   const [declineWith, setDeclineWith] = useState({});
 
@@ -222,7 +224,7 @@ export default function CalendarInvites({ viewer }) {
       action: "create", title: title.trim(), at, mins: joinDuration(hrs, mins),
       inviteeIds: picked, note: note.trim(),
     });
-    if (d) { setTitle(""); setAt(""); setPicked([]); setNote(""); setHrs("0"); setMins("30"); setClash(null); }
+    if (d) { setTitle(""); setAt(""); setPicked([]); setNote(""); setHrs("0"); setMins("30"); setClash(null); setPickQuery(""); }
   };
 
   /* A warning is about one time and one list of people. Change either and it
@@ -464,9 +466,32 @@ export default function CalendarInvites({ viewer }) {
           </div>
           <input style={field} placeholder="Anything they should know (optional)"
             value={note} onChange={(e) => setNote(e.target.value)} />
-          <div style={{ fontSize: 11.5, color: C.sub }}>Who is coming</div>
+          {/* ★ THE SAME VIEW AS LINEUP. Matt, Aug 19 2026. A wall of ~106 chips
+              with no search is a very long scroll to find one name, and no way
+              to see who you have already picked. The rule is in calendarStore —
+              in particular that somebody already picked stays on screen even
+              when they do not match what you are typing. */}
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 11.5, color: C.sub }}>Who is coming</div>
+            {picked.length > 0 && (
+              <>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: C.ink }}>
+                  {picked.length} picked
+                </div>
+                {/* ⚠️ CLEARING IS ONE TAP AND IT IS NOT HIDDEN. Taking twenty
+                    names off one at a time is how somebody sends the wrong
+                    invitation rather than starting again. */}
+                <button onClick={() => setPicked([])}
+                  style={{ all: "unset", cursor: "pointer", fontSize: 11.5, fontWeight: 700, color: C.sub, textDecoration: "underline" }}>
+                  clear
+                </button>
+              </>
+            )}
+          </div>
+          <input style={field} placeholder="Search the team"
+            value={pickQuery} onChange={(e) => { const v = e.target.value; setPickQuery(v); }} />
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {people.filter((p) => !sameId(p.id, myId)).map((p) => {
+            {invitePickList(people, pickQuery, picked, myId).map((p) => {
               const on = picked.some((x) => sameId(x, p.id));
               return (
                 <button key={p.id} onClick={() => togglePerson(p.id)}
