@@ -66,34 +66,17 @@ import { loadHRTeam } from "./hrTeam.js";
    ⚠️ STILL NOT WIRED, and the tile gate is what guarantees it: the template
    opens for two people (storeConfig `l101tpl`), so an instructor assigned in
    here cannot reach it. The assignment is a rehearsal, not a grant. */
-export const INSTRUCTOR_WEEKS = new Set(["w2", "w3", "tpl-w2", "tpl-w3"]);
+/* ★★ THE RULE MOVED TO instructorWeeks.js ON Aug 19 2026, AND ONLY BECAUSE OF
+   WHAT IT DECIDES. It answers whether an assigned instructor sees the class at
+   all — the notes, the unlocking, and since today the answer keys — and it
+   could not be tested from here: this file imports store.js, which reads
+   `import.meta.env`, so importing it from Node throws before a single
+   assertion runs.
 
-/* ★★ THE TEMPLATE CARRIES INSTRUCTOR NOTES ON EVERY WEEK (Bri, Aug 11 2026:
-   "I need instructor notes and assignments to be available on all modules in
-   the L101 template. I am making in person versions of the W1 and W4 classes
-   and need to have these functions available on all modules — including copied
-   weeks.")
-
-   ⚠️⚠️ A SET COULD NEVER HAVE ANSWERED THIS. The set above is four fixed ids.
-   A week Bri creates today gets a generated key (`wkmso0kydv6o9`), so it can
-   never be in a list written yesterday — the feature was structurally unable to
-   reach the weeks she was making. That is why this is a RULE and not another
-   entry.
-
-   ⚠️⚠️ AND THE WEEK ID ALONE CANNOT DECIDE IT. Both programs mint the same
-   `wk…` shape from `addWeek`, so `wkmsku2vax772` (her live Week 5) and
-   `wkmsnebnj6uq` (the template's) are indistinguishable by id. The NAMESPACE is
-   the only thing that separates them, which is why callers pass it. Guessing
-   from the id would have switched the system on across her live class, which
-   she did not ask for — her original spec was "For my W2 and W3 classes".
-
-   ⚠️ THE LIVE CLASS IS UNCHANGED: still exactly W2 and W3, still by the set.
-   ⚠️ NO `ns` FALLS BACK TO THE SET, so any caller not yet passing one behaves
-   exactly as it did before this function existed. */
-export const isTemplateNs = (ns) => String(ns || "").split(":").pop() === "l101tpl";
-
-export const weekHasInstructors = (weekId, ns) =>
-  isTemplateNs(ns) ? true : INSTRUCTOR_WEEKS.has(String(weekId || ""));
+   ⚠️ RE-EXPORTED, NOT COPIED. Every existing importer of this file is
+   untouched and there is still exactly one definition. assignedInstructor.test.mjs
+   drives the leaf directly. */
+export { INSTRUCTOR_WEEKS, isTemplateNs, weekHasAssignees, weekHasInstructors } from "./instructorWeeks.js";
 
 export const ASSIGN_KEY = "ld:l101:instructors-v1";
 export const SESSIONS_KEY = "ld:l101:isessions-v1";

@@ -239,7 +239,30 @@ export default function CalendarInvites({ viewer }) {
     /* ⚠️ VALUE CAPTURED, NEVER READ INSIDE THE UPDATER. */
     const id = ev.id;
     setDeclineWith((m) => { const n = { ...m }; delete n[id]; return n; });
+    /* 🐛 THE BADGE ON THE CALENDAR ICON DID NOT CLEAR WHEN YOU ANSWERED.
+       Matt, Aug 19 2026: "I accepted the meeting but the alert won't clear."
+
+       The count is fetched in App.jsx in an effect keyed on `[user]` — so it
+       ran ONCE, when the Hub loaded, and never again. Answering an invitation
+       happens in here, several screens away, and nothing told the header. The
+       number was correct when it was drawn and stale from the next tap
+       onwards, and the only way to clear it was a full reload.
+
+       ⚠️ AN EVENT, NOT A PROP OR A POLL. The header and this tile are not in a
+       parent-child line, so there is no prop to thread; and a poll would have
+       ~106 devices asking a calendar question on a timer to answer something
+       that changes when a person taps a button. The Hub already uses exactly
+       this shape for `hub:session-expired` and `hub:session-restored`.
+       ⚠️ FIRED AFTER THE SEND, so a refused save leaves the badge alone rather
+       than clearing a number that is still true.
+       ⚠️ IT CARRIES NO COUNT. This says "something changed, ask again" and the
+       header re-reads through the SAME `awaitingReply` it always used. A count
+       passed in here would be a second answer to "how many are waiting", and
+       two answers to one question is the drift this file already records for
+       the recommendation badge. */
+    try { window.dispatchEvent(new CustomEvent("hub:calendar-answered")); } catch { /* no window: nothing to refresh */ }
   };
+
 
   const move = async (ev) => {
     const to = moveTo[ev.id];
