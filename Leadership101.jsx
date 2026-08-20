@@ -556,7 +556,7 @@ class L101Boundary extends React.Component {
      • On the TARGET, a failed read means we do not know whether that week
        already holds work. Copying into it might silently replace something.
    Both come back as "could not be read" on the row rather than a silent skip. */
-function CopyClass({ PG, weeks, prepWork, onPrep, onClose }) {
+function CopyClass({ PG, weeks, prepWork, onPrep, onAddWeeks, onClose }) {
   const others = PROGRAM_REGISTRY.filter((p) => p && p.ns !== PG.ns);
   const [fromNs, setFromNs] = useState("");
   const [plan, setPlan] = useState(null);        // null = nothing picked / loading
@@ -696,10 +696,39 @@ function CopyClass({ PG, weeks, prepWork, onPrep, onClose }) {
           ))}
 
           {plan.noHome.length > 0 && (
-            <p className="text-xs mb-2" style={{ color: "#B7791F" }}>
-              No home here for Week {plan.noHome.map((w) => w.n).join(", ")}. {PG.name} has no week with that number,
-              so {plan.noHome.length === 1 ? "it stays" : "they stay"} behind.
-            </p>
+            <div className="mb-2">
+              <p className="text-xs" style={{ color: "#B7791F" }}>
+                No home here for Week {plan.noHome.map((w) => w.n).join(", ")}. {PG.name} has no week with that number.
+              </p>
+              {/* ★ THE BUTTON THAT ENDS THE DUPLICATE-THEN-COPY DANCE. This line
+                  used to finish "so they stay behind", and the answer was to go
+                  and make an empty week by hand for each one, then come back.
+                  ⚠️ IT ONLY ADDS — these are by definition the weeks with no
+                  match, so nothing here can overwrite anything. */}
+              {onAddWeeks && (
+                <button onClick={async () => {
+                    setBusy(true); setMsg("");
+                    const r = await onAddWeeks(plan.noHome);
+                    setBusy(false);
+                    if (r.failed && r.failed.length) {
+                      setMsg("Added " + r.added + ". These could not be read and were left behind: " + r.failed.join(", ") + ".");
+                    } else {
+                      setDone({ wrote: r.added, prepCount: 0, added: true });
+                      /* ⚠️ THE PLAN IS STALE THE MOMENT A WEEK IS ADDED — it was
+                         built against a week list that no longer exists, and
+                         leaving it up would offer a copy into a row that has
+                         moved. Clearing it sends her back through Choose a class,
+                         which rebuilds it against what is really there now. */
+                      setPlan(null); setFromNs("");
+                    }
+                  }}
+                  disabled={busy}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg mt-1"
+                  style={{ color: "#fff", backgroundColor: C.blue, opacity: busy ? 0.6 : 1 }}>
+                  {busy ? "Adding…" : "Add " + plan.noHome.length + " class" + (plan.noHome.length === 1 ? "" : "es") + " here"}
+                </button>
+              )}
+            </div>
           )}
           {plan.sameRecord.length > 0 && (
             <p className="text-xs mb-2" style={{ color: C.red }}>
@@ -731,7 +760,7 @@ function CopyClass({ PG, weeks, prepWork, onPrep, onClose }) {
       {msg && <p className="text-xs mt-3" style={{ color: C.red }}>{msg}</p>}
       {done && !msg && (
         <p className="text-xs mt-3" style={{ color: C.green }}>
-          Copied {done.wrote} week{done.wrote === 1 ? "" : "s"}
+          {done.added ? "Added" : "Copied"} {done.wrote} class{done.wrote === 1 ? "" : "es"}
           {done.prepCount ? ` and ${done.prepCount} prep section${done.prepCount === 1 ? "" : "s"}` : ""}.
           Open a week to see it.
         </p>
@@ -1840,6 +1869,64 @@ function Leadership101Inner({ user, embedded = false, onBack, program = L101_PRO
      later.
      ⚠️ EVERY ID IS REWRITTEN by copyWeek, which is what stops the duplicate
      arriving already ticked for everyone who finished the original. */
+/* ══════════════════════════════════════════════════════════════════════════
+   MAKE A HOME FOR A WEEK THAT HAS NONE.
+
+   Matt, Aug 19 2026: "Build it." Bri: "I have the saved store template ready.
+   This needs to be the version that goes to new stores ready for use."
+
+   ⛔ WHAT WAS MISSING, AND THE SCREEN ALREADY SAID IT. Copy Class fills a week
+   that EXISTS. Her template is eight weeks and a new store's live class ships
+   with five, so three of hers landed on "No home here for Week 6, 7, 8 — this
+   class has no week with that number, so they stay behind." The instruction was
+   then: go and duplicate a week by hand to make an empty one, come back, copy
+   into it, three times. That is not a thing to hand somebody setting up a new
+   restaurant.
+
+   ⇒ THIS IS THE SAME OPERATION duplicateWeek ALREADY DOES, pointed at another
+   course. It mints a key, copies the content under it, writes the CONTENT first
+   and the week list second, and refuses on a failed read — every one of those
+   for the reasons that function records beside itself.
+
+   ⚠️⚠️ IT ONLY EVER ADDS. The weeks it is given are by definition the ones with
+   no match, so nothing here can overwrite anything. The destructive half stays
+   where it was, behind Copy Class's own plan and its "this replaces work
+   already here" warning. Two operations, and the one that can lose work is not
+   this one.
+   ⚠️ NUMBERS CONTINUE FROM WHAT IS HERE, never from the source. Two courses
+   both calling something Week 6 is how a copy lands on the wrong record, which
+   is exactly what `sameRecord` in l101Copy.js exists to refuse.
+   ⚠️ A WEEK THAT WILL NOT READ IS SKIPPED AND NAMED, never silently dropped. */
+  const adoptWeeks = async (rows) => {
+    const list = Array.isArray(rows) ? rows : [];
+    if (!list.length) return { added: 0, failed: [] };
+    let maxN = weeks.reduce((m, x) => Math.max(m, Number(x.n) || 0), 0);
+    const made = [];
+    const failed = [];
+    for (const r of list) {
+      const label = r.title || ("Week " + r.n);
+      const got = await kvReadResult(contentKey(r.key));
+      if (!got.ok) { failed.push(label); continue; }
+      const key = "wk" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
+      const next = copyWeek(got.value, key);
+      if (!next) { failed.push(label); continue; }
+      if ((await kvWrite(contentKey(key), next)) === false) { failed.push(label); continue; }
+      maxN += 1;
+      const title = r.title || ("Week " + maxN);
+      made.push({ key, n: maxN, label: "WK " + maxN, title,
+        modules: [{ id: "m-" + key, type: "hub", hub: key, title, note: "Runs in the Hub" }] });
+    }
+    if (made.length) {
+      setWeeks((ws) => {
+        const copy = ws.map((x) => ({ ...x, modules: [...(x.modules || [])] }));
+        made.forEach((w) => copy.push(w));
+        commitWeeks(copy);
+        return copy;
+      });
+    }
+    return { added: made.length, failed };
+  };
+
   const duplicateWeek = async (weekIdx) => {
     const w = weeks[weekIdx];
     if (!w) return;
@@ -2537,7 +2624,8 @@ function Leadership101Inner({ user, embedded = false, onBack, program = L101_PRO
             )}
 
             {showCopy && (
-              <CopyClass PG={PG} weeks={weeks} prepWork={prepWork} onPrep={setPrepWork} onClose={() => setShowCopy(false)} />
+              <CopyClass PG={PG} weeks={weeks} prepWork={prepWork} onPrep={setPrepWork}
+                onAddWeeks={adoptWeeks} onClose={() => setShowCopy(false)} />
             )}
 
             {showAdmin && (

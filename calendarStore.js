@@ -584,3 +584,37 @@ export function awaitingReply(list, personId, replies, now = new Date()) {
   return upcomingEvents(list, now)
     .filter((e) => isInvited(e, personId) && replyStatus(e, replies) === INVITED);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   WHO TO SHOW IN THE "Who is coming" LIST.
+
+   Matt, Aug 19 2026: "I would like the same view as Lineup for the list of
+   people to invite to a meeting."
+
+   ⛔ WHAT IT WAS. Every person on the roster, all at once, as a wall of chips.
+   At ~106 people that is a very long scroll to find one name, with no way to
+   search and no way to tell at a glance who you had already picked. Lineup hit
+   exactly this and answered it with one box — see PeopleSearch in
+   Availability.jsx, whose own comment records that the skills tab had no way to
+   find a person at all.
+
+   ⚠️⚠️ SOMEBODY ALREADY PICKED IS ALWAYS SHOWN, EVEN IF THEY DO NOT MATCH.
+   This is the whole care in the function. Filter them out and typing a second
+   name makes the first one vanish off the screen — the selection is still there
+   in state, so nothing is lost, but the person sending the invitation cannot
+   SEE who is on it and has no way to take one off. A picker you cannot review
+   before you press send is worse than a long list.
+
+   ⚠️ SORTED BY NAME, because the roster's own order is not one anybody can
+   predict: the live list runs Denise before Brooke and Daisy before Hannah.
+   ⚠️ AND NEVER YOURSELF. Calling a meeting already puts you in it. */
+export function invitePickList(people, query, picked, myId) {
+  const all = Array.isArray(people) ? people : [];
+  const on = new Set((Array.isArray(picked) ? picked : []).map((x) => bareId(x)));
+  const q = String(query == null ? "" : query).trim().toLowerCase();
+  const mine = bareId(myId);
+  return all
+    .filter((p) => p && p.name && (!mine || bareId(p.id) !== mine))
+    .filter((p) => !q || on.has(bareId(p.id)) || String(p.name).toLowerCase().includes(q))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
