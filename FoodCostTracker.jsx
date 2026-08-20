@@ -503,7 +503,17 @@ export default function FoodCostTracker() {
       g.items.push(e);
       g.subtotal += Number(e.amount) || 0;
     });
-    return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+    /* ⚠️ NEWEST DAY FIRST. Matt, Aug 20 2026: "I would like the invoices to
+       show the current or most recent day first so I don't have to scroll when
+       inputting." By the 19th of a month this is eighteen collapsed day rows
+       deep, the entry form sits at the TOP, and the day it writes into was at
+       the BOTTOM. He was scrolling past the whole month to check the thing he
+       had just typed.
+       ⚠️ ONLY THE DAY ORDER FLIPS. The sort on the line above groups the
+       entries and stays ascending, which is what keeps the items inside one day
+       in the order he added them. Flipping both would reverse each invoice
+       against the order it was entered. */
+    return [...map.values()].sort((a, b) => b.date.localeCompare(a.date));
   }, [rec]);
 
   /* ---- giveaways ---- */
