@@ -5586,7 +5586,7 @@ async function runSecuritySweep(env, opts = {}) {
 
   /* ── Expansion 2: census delta + saturation ── */
   try {
-    const census = (await sbGet(env, "gcfcr-kvset-anon-keys-v1")) || {};
+    const census = (await sbGetStrict(env, "gcfcr-kvset-anon-keys-v1")) || {};
     const keys = Object.keys(census).sort();
     /* ⚠️ AFTER `keys` IS CAPTURED AND BEFORE THE DELTA BELOW, deliberately, so
        the snapshot written at the end of this block is today's real list and
@@ -5994,7 +5994,7 @@ async function runL10Recap(env) {
    string it is either already a hash or something this does not understand, and
    guessing at it would lock somebody out of the Hub. */
 async function runPinHashMigrate(env) {
-  const before = (await sbGet(env, "gcfcr-hr-pins")) || {};
+  const before = (await sbGetStrict(env, "gcfcr-hr-pins")) || {};
   if (!before || typeof before !== "object" || Array.isArray(before)) {
     return { error: "pin map is missing or not an object", converted: 0 };
   }
@@ -6014,7 +6014,7 @@ async function runPinHashMigrate(env) {
 
   /* Re-read, then merge ONLY the entries that were still legacy at this moment.
      If someone set a PIN while we were hashing, theirs wins and is left alone. */
-  const fresh = (await sbGet(env, "gcfcr-hr-pins")) || {};
+  const fresh = (await sbGetStrict(env, "gcfcr-hr-pins")) || {};
   const out = fresh && typeof fresh === "object" && !Array.isArray(fresh) ? { ...fresh } : {};
   let written = 0;
   for (const [id, hashed] of Object.entries(converted)) {
@@ -6315,7 +6315,7 @@ function emailFromSources(m, info, added) {
    of each source per request, shared across every recipient. */
 async function resolveNotifyEmails(env, b) {
   const [info, added] = await Promise.all([
-    sbGet(env, "gcfcr-hr-info").catch(() => null),
+    sbGetStrict(env, "gcfcr-hr-info").catch(() => null),
     sbGet(env, HR_ADDED_KEY).catch(() => null),
   ]);
   const inf = info && typeof info === "object" && !Array.isArray(info) ? info : {};
@@ -6337,7 +6337,7 @@ async function resolveNotifyEmails(env, b) {
    read-modify-write of the whole map, and an HR edit landing in that same
    second could be lost. Usage: /api/run-job?job=emails-migrate&key=... */
 async function runEmailsMigrate(env) {
-  const info = (await sbGet(env, "gcfcr-hr-info")) || {};
+  const info = (await sbGetStrict(env, "gcfcr-hr-info")) || {};
   const added = (await sbGet(env, HR_ADDED_KEY)) || [];
   let filled = 0, alreadyHad = 0;
   const put = (id, email) => {
@@ -9476,7 +9476,7 @@ export default {
              is one, and there will be others nobody has found yet. Finding them
              is the point of this list. */
           try {
-            const seen = (await sbGet(env, "gcfcr-kvset-anon-keys-v1")) || {};
+            const seen = (await sbGetStrict(env, "gcfcr-kvset-anon-keys-v1")) || {};
             const map = seen && typeof seen === "object" && !Array.isArray(seen) ? seen : {};
             /* The FAMILY, not the exact key — see censusFamily. Recording
                exact keys is what filled this to 60/60 and blinded it. */
@@ -10279,7 +10279,7 @@ export default {
             try {
               const salt = pinNewSalt();
               const h = await pinHashHex(pin, salt);
-              const fresh = (await sbGet(env, "gcfcr-hr-pins")) || {};
+              const fresh = (await sbGetStrict(env, "gcfcr-hr-pins")) || {};
               if (pinIsLegacy(fresh[ids[0]])) {
                 fresh[ids[0]] = { h, s: salt };
                 await sbSet(env, "gcfcr-hr-pins", fresh);
@@ -10502,7 +10502,7 @@ export default {
         }
         if (!/^\d{4,6}$/.test(pin)) return Response.json({ ok: false, error: "bad-pin" }, { status: 400 });
 
-        const live = (await sbGet(env, "gcfcr-hr-pins")) || {};
+        const live = (await sbGetStrict(env, "gcfcr-hr-pins")) || {};
         const owners = (await pinOwners(live, pin)).filter((o) => String(o) !== id);
         if (owners.length) return Response.json({ ok: false, error: "taken" });
 
@@ -10725,7 +10725,7 @@ export default {
           return Response.json({ ok: false, error: "bad-role" }, { status: 400 });
         }
 
-        const pins = (await sbGet(env, "gcfcr-hr-pins")) || {};
+        const pins = (await sbGetStrict(env, "gcfcr-hr-pins")) || {};
         if (Object.keys(pins).length) {
           return Response.json({ ok: false, error: "already-set-up" }, { status: 409 });
         }
@@ -10747,7 +10747,7 @@ export default {
            another request could have raced the emptiness check. Writing the
            whole map back from the copy read before that check would erase a
            PIN created in between. */
-        const livePins = (await sbGet(env, "gcfcr-hr-pins")) || {};
+        const livePins = (await sbGetStrict(env, "gcfcr-hr-pins")) || {};
         livePins[id] = { h: await pinHashHex(pin, salt), s: salt };
         await sbSet(env, "gcfcr-hr-pins", livePins);
 
@@ -10823,10 +10823,10 @@ export default {
           return Response.json({ ok: false, error: "no-match" });
         }
 
-        const pins = (await sbGet(env, "gcfcr-hr-pins")) || {};
+        const pins = (await sbGetStrict(env, "gcfcr-hr-pins")) || {};
         if (pins[id]) return Response.json({ ok: false, error: "already" });
 
-        const info = (await sbGet(env, "gcfcr-hr-info")) || {};
+        const info = (await sbGetStrict(env, "gcfcr-hr-info")) || {};
         const rec = info[id] && info[id].claim;
         if (!(await claimMatches(code, rec))) {
           return Response.json({ ok: false, error: "no-match" });
@@ -10842,7 +10842,7 @@ export default {
         await sbSet(env, "gcfcr-hr-pins", pins);
 
         /* Spend the code. Re-read first — see the warning above. */
-        const fresh = (await sbGet(env, "gcfcr-hr-info")) || {};
+        const fresh = (await sbGetStrict(env, "gcfcr-hr-info")) || {};
         if (fresh[id] && fresh[id].claim) {
           const row = { ...fresh[id] };
           delete row.claim;
@@ -10878,7 +10878,7 @@ export default {
         if (String(tok.u) !== id && !(await hrFullReader(env, tok.u))) {
           return Response.json({ ok: false, error: "forbidden" }, { status: 403 });
         }
-        const live = (await sbGet(env, "gcfcr-hr-pins")) || {};
+        const live = (await sbGetStrict(env, "gcfcr-hr-pins")) || {};
         delete live[id];
         await sbSet(env, "gcfcr-hr-pins", live);
         return Response.json({ ok: true });
@@ -12085,7 +12085,7 @@ export default {
             return Response.json({ ok: false, error: "not-allowed — HR files this record" }, { status: 403 });
           }
           if (!canAll && HR_OWN_ROW_ONLY.includes(k)) {
-            const storedRaw = await sbGet(env, k);
+            const storedRaw = await sbGetStrict(env, k);
             const base = storedRaw && typeof storedRaw === "object" && !Array.isArray(storedRaw) ? storedRaw : {};
             const incoming = b.value && typeof b.value === "object" && !Array.isArray(b.value) ? b.value : {};
             if (Object.prototype.hasOwnProperty.call(incoming, uid)) {
@@ -12165,7 +12165,7 @@ export default {
             if (!Object.prototype.hasOwnProperty.call(incoming, mid)) {
               return Response.json({ ok: false, error: "member-row-missing" }, { status: 400 });
             }
-            const storedRaw = await sbGet(env, k);
+            const storedRaw = await sbGetStrict(env, k);
             const base = storedRaw && typeof storedRaw === "object" && !Array.isArray(storedRaw) ? storedRaw : {};
             base[mid] = incoming[mid];
             await sbSet(env, k, base);
@@ -13146,7 +13146,7 @@ export default {
           if (rec.byId) {
             try {
               const mid = String(rec.byId);
-              const filesRaw = await sbGet(env, "gcfcr-hr-files");
+              const filesRaw = await sbGetStrict(env, "gcfcr-hr-files");
               const files = filesRaw && typeof filesRaw === "object" && !Array.isArray(filesRaw) ? filesRaw : {};
               const row = Array.isArray(files[mid]) ? files[mid] : [];
               const entryId = "esc-" + rec.id;
@@ -14520,7 +14520,7 @@ export default {
            write, so one award lands twice. `awardedIds` returns a SET, so this
            is `.has` and never `.includes` — which reads fine and is always
            false on a Set. */
-        const freshRaw = await sbGet(env, "gcfcr-hr-tokens-v1");
+        const freshRaw = await sbGetStrict(env, "gcfcr-hr-tokens-v1");
         const fresh = freshRaw && typeof freshRaw === "object" && !Array.isArray(freshRaw) ? freshRaw : {};
         const freshMine = Array.isArray(fresh[uid]) ? fresh[uid] : [];
         const have = starAwardedIds(freshMine);

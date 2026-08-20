@@ -124,9 +124,16 @@ group("3. it cannot file twice, and cannot clobber anyone else's file");
      it was correct. The line it is looking for is 42 characters. Padding is
      cheap; an off-by-two that accuses working code is not. */
   const writeLine = 'await sbSet(env, "gcfcr-hr-files", files);';
-  const region = worker.slice(worker.indexOf('const filesRaw = await sbGet(env, "gcfcr-hr-files")'),
-    worker.indexOf(writeLine) + writeLine.length);
-  t("it reads the existing map first", /const filesRaw = await sbGet\(env, "gcfcr-hr-files"\)/.test(region));
+  /* ⚠️ THE MARKER IS THE KEY, NOT THE READ FUNCTION. This sliced the region
+     from the literal string `sbGet(env, "gcfcr-hr-files")`, so the day that
+     line became `sbGetStrict` the indexOf returned -1, the region started at
+     byte zero, and all four assertions below went red about a reordering that
+     never happened. What they actually grade is the read-assign-write shape. */
+  const readRe = /const filesRaw = await sbGet(Strict)?\(env, "gcfcr-hr-files"\)/;
+  const readAt = worker.search(readRe);
+  t("the filing block was found (control)", readAt > 0);
+  const region = worker.slice(readAt, worker.indexOf(writeLine) + writeLine.length);
+  t("it reads the existing map first", readRe.test(region));
   t("it assigns ONE member row", /files\[mid\] = \[\{/.test(region));
   t("it writes back the map it read, not a new one", /await sbSet\(env, "gcfcr-hr-files", files\);/.test(region));
   t("and it keeps that person's existing entries", /\.\.\.row\]/.test(region));
