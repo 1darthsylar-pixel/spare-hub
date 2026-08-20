@@ -1171,7 +1171,7 @@ const SECTIONS = [
          setting. */
       { id: "dailysetup", name: "Lineup · Daily Setup", desc: "Assign FOH & BOH stations by day and shift", tier: 1, Component: DailySetup },
       { id: "opschecklists", color: "#0891B2", name: "Ops Checklists", desc: "Shift-tagged Leader, FOH & BOH checklists", tier: 2, allow: ["Junior Trainer", "Trainer", "Senior Trainer"], Component: OpsChecklists },
-      { id: "food", color: "#0F766E", name: "Food Safety", desc: "Run the biweekly Safe Eats walkthrough", tier: 2, allow: ["Junior Trainer", "Trainer", "Senior Trainer"], Component: FoodSafety },
+      { id: "food", color: "#0F766E", name: "Food Safety", desc: "Run the biweekly Safety Walk", tier: 2, allow: ["Junior Trainer", "Trainer", "Senior Trainer"], Component: FoodSafety },
       { id: "waste", name: "Waste & Donations", desc: "Log waste, donations and inventory", tier: 2, allow: ["Junior Trainer", "Trainer", "Senior Trainer"], Component: WasteTracker },
       { id: "cleaning", name: "Daily Cleaning", desc: "Sign off FOH & BOH cleaning tasks", tier: 1, Component: DailyCleaning },
     ],

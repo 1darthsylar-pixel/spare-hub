@@ -209,7 +209,7 @@ function fmtWhen(iso) {
 }
 
 // ── Severity breakdown (violation-report style banner) ─────────────────────────
-// Counts FLAGGED items per risk tier, mirroring the Safe Eats report header
+// Counts FLAGGED items per risk tier, mirroring the Safety Walk report header
 // (Immediate / High / Medium / Low). Uses each section's own accent so the tool
 // stays visually consistent with its tabs — not the consultant PDF's palette.
 const TIER_IDS = ["immediate", "high", "medium", "low"];
@@ -858,7 +858,7 @@ export default function FoodSafetyWalkthrough() {
                 <span style={{ background: "#E31837", borderRadius: 4, padding: "2px 8px", fontSize: 10, fontWeight: 800, letterSpacing: "0.15em" }}>{STORE.name.toUpperCase()} FSR</span>
               </div>
               <div style={{ fontSize: 27, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1 }}>Biweekly Walkthrough</div>
-              <div style={{ fontSize: 13, color: "rgba(255,255,255,.72)", marginTop: 7 }}>Based on Safe Eats Q2 2026 · {STORE.name} FSU</div>
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,.72)", marginTop: 7 }}>Based on the Q2 2026 food safety standard · {STORE.name} FSU</div>
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontFamily: "'IBM Plex Mono',ui-monospace,monospace", fontSize: 10.5, letterSpacing: "0.1em", color: "#8FE3D8", fontWeight: 600 }}>CHECKPOINTS</div>
