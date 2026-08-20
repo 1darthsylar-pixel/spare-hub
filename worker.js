@@ -1851,6 +1851,286 @@ async function runMonthlyReports(env, now) {
   return out;
 }
 
+/* ═══ THE NIGHTLY BACKUP ═══════════════════════════════════════════════════
+   Every row of the store's own data, written once a night to R2 as one JSON
+   file. Nothing here reads or sends anything to anybody: it copies this store's
+   database into this store's own bucket on this store's own account.
+
+   ⛔⛔ THE SPEC SAID "READ EVERY ROW" AND THAT IS THE ONE THING A NAIVE READ
+   CANNOT DO. Supabase REST returns a MAXIMUM OF 1000 ROWS per request. Measured
+   against the live database on Aug 20 2026:
+
+       kv_store       1,379 rows   <- already past the cap
+       submissions      125 rows
+       tool_events    7,326 rows   <- eight pages
+
+   ⇒ A single unpaged GET would have backed up 1,000 of 1,379 keys, answered
+   `ok: true` with a confident row count, and written a file that LOOKS like a
+   backup. Nobody finds that out until they need it. This pages.
+
+   ⚠️ ORDERED BY PRIMARY KEY, NEVER UNORDERED. Offset paging over an unordered
+   result may repeat rows and skip others, because the database is free to
+   return them in any order between requests. Each table is sorted by its own
+   primary key: `key` for kv_store, `id` for the other two.
+
+   ⚠️⚠️ IT REFUSES RATHER THAN TRUNCATES. If a table somehow exceeds the runaway
+   cap, the job FAILS loudly instead of writing a short file. A backup that
+   quietly holds nine tenths of the data is worse than no backup, because it
+   stops anybody looking for the real one. Same reasoning as the write-path rule
+   in this repo: a write unsure of the shape it is producing fails rather than
+   saves.
+
+   ⚠️ `rate_counters` IS DELIBERATELY NOT BACKED UP. It is throwaway rate-limit
+   state that rebuilds itself in minutes, and it changes on nearly every
+   request. `gcfcr_hr_store` is empty today and is included anyway, because "it
+   is empty right now" is not a reason to leave a table out of a backup. */
+const BACKUP_TABLES = [
+  { table: "kv_store", order: "key" },
+  { table: "submissions", order: "id" },
+  { table: "tool_events", order: "id" },
+  { table: "gcfcr_hr_store", order: "key" },
+];
+const BACKUP_PAGE = 1000;
+/* A runaway guard, not a size limit. Roughly ten times today's whole database. */
+const BACKUP_MAX_ROWS = 100000;
+
+async function backupReadTable(env, table, order) {
+  const rows = [];
+  for (let offset = 0; ; offset += BACKUP_PAGE) {
+    if (rows.length > BACKUP_MAX_ROWS) {
+      throw new Error(`${table} passed ${BACKUP_MAX_ROWS} rows; refusing to write a partial backup`);
+    }
+    const url = `${env.SUPABASE_URL}/rest/v1/${table}`
+      + `?select=*&order=${encodeURIComponent(order)}.asc`
+      + `&limit=${BACKUP_PAGE}&offset=${offset}`;
+    const res = await fetch(url, {
+      headers: {
+        apikey: env.SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      },
+    });
+    /* ⚠️ THROWS. A refused read must never look like the end of the table —
+       that is the difference between "the backup is complete" and "the backup
+       stopped early and said nothing". Same rule as sbGetStrict. */
+    if (!res.ok) throw new Error(`backup read refused: ${res.status} on ${table}`);
+    const page = await res.json();
+    if (!Array.isArray(page)) throw new Error(`backup read gave no rows array on ${table}`);
+    rows.push(...page);
+    if (page.length < BACKUP_PAGE) return rows;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ★★ THE FILES, NOT JUST THE TABLES.
+
+   Matt, Aug 20 2026: back up Supabase Storage too. Until now the nightly job
+   copied four Postgres tables and NOTHING ELSE, so every uploaded ID, doctor's
+   note, signed document, receipt, coursework file and task photo existed in
+   exactly one place. A table backup that restores a row pointing at a file
+   nobody kept is a backup that looks complete and is not.
+
+   ⚠️⚠️ INCREMENTAL, AND THAT IS THE WHOLE DESIGN RATHER THAN AN OPTIMISATION.
+   Copying the entire library every night would move the same gigabytes over
+   and over, and a job that takes longer every week is a job that eventually
+   times out at cron-job.org and stops running — which is exactly how
+   `cleaning-summary` died. An object already in R2 AT THE SAME SIZE is
+   skipped.
+
+   ⚠️ SIZE IS THE TEST, NOT A CHECKSUM, and that is a stated trade. Supabase's
+   listing gives a size and an updated_at; R2's head gives a size. Comparing
+   sizes catches every added, removed and resized object, and misses only an
+   edit that lands on exactly the same byte count. These are uploads — photos,
+   PDFs, scans — not files edited in place, so that case is close to
+   theoretical. A checksum would mean downloading every object every night,
+   which is the thing being avoided.
+
+   ⛔ A FAILED LISTING THROWS. Same posture as the table half: a bucket that
+   could not be listed must never be written up as "0 objects", because a
+   manifest claiming success is worse than no manifest at all. */
+const BACKUP_BUCKETS = ["hr-files", "Receipts", "l101-coursework", "trainer-task-photos", "hub-assets"];
+const BACKUP_LIST_PAGE = 100;
+/* A runaway guard, not a size limit, matching BACKUP_MAX_ROWS above. */
+const BACKUP_MAX_FILES = 20000;
+
+const backupFilesName = () => `backup-files-${isoOfD(nowET())}.json`;
+
+/* One page of a bucket's objects. Supabase's storage list is a POST, not a GET,
+   and it returns `{ name, metadata: { size, mimetype }, updated_at }`. */
+async function backupListBucket(env, bucket) {
+  const out = [];
+  for (let offset = 0; ; offset += BACKUP_LIST_PAGE) {
+    if (out.length > BACKUP_MAX_FILES) {
+      throw new Error(`${bucket} passed ${BACKUP_MAX_FILES} objects; refusing to write a partial manifest`);
+    }
+    const res = await fetch(`${env.SUPABASE_URL}/storage/v1/object/list/${encodeURIComponent(bucket)}`, {
+      method: "POST",
+      headers: {
+        apikey: env.SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ prefix: "", limit: BACKUP_LIST_PAGE, offset }),
+    });
+    if (!res.ok) throw new Error(`bucket listing refused: ${res.status} on ${bucket}`);
+    const page = await res.json();
+    if (!Array.isArray(page)) throw new Error(`bucket listing gave no array on ${bucket}`);
+    /* ⚠️ A FOLDER PLACEHOLDER HAS NO metadata AND IS NOT AN OBJECT. Copying one
+       would write a zero-byte file named after a directory. */
+    for (const o of page) {
+      if (!o || !o.name || !o.metadata) continue;
+      out.push({
+        name: String(o.name),
+        size: Number(o.metadata.size) || 0,
+        updatedAt: String(o.updated_at || ""),
+      });
+    }
+    if (page.length < BACKUP_LIST_PAGE) return out;
+  }
+}
+
+/* Is this object already in R2, at the same size?
+   ⚠️ A FAILED HEAD IS TREATED AS "NOT THERE", deliberately. The cost of being
+   wrong that way is copying a file we already had; the cost of the other way is
+   believing we have a file we do not. */
+async function backupHasFile(env, key, size) {
+  try {
+    const head = await env.BACKUPS.head(key);
+    return !!head && Number(head.size) === Number(size);
+  } catch { return false; }
+}
+
+async function backupCopyFile(env, bucket, name) {
+  const res = await fetch(
+    `${env.SUPABASE_URL}/storage/v1/object/${encodeURIComponent(bucket)}/${name.split("/").map(encodeURIComponent).join("/")}`,
+    { headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } },
+  );
+  if (!res.ok) throw new Error(`object read refused: ${res.status} on ${bucket}/${name}`);
+  const body = await res.arrayBuffer();
+  await env.BACKUPS.put(`files/${bucket}/${name}`, body, {
+    httpMetadata: { contentType: res.headers.get("content-type") || "application/octet-stream" },
+  });
+  return body.byteLength;
+}
+
+async function runBackupFiles(env) {
+  if (env && env.__QUIET) return { quiet: true, wouldWrite: backupFilesName() };
+  if (!env || !env.BACKUPS) throw new Error("no BACKUPS bucket bound");  /* see runBackup */
+
+  const startedAt = Date.now();
+  const manifest = [];
+  const perBucket = {};
+  let copied = 0, skipped = 0, bytes = 0;
+
+  for (const bucket of BACKUP_BUCKETS) {
+    /* ⛔ NOT WRAPPED. A listing that fails takes the whole job down rather than
+       producing a manifest that quietly omits a bucket. */
+    const objects = await backupListBucket(env, bucket);
+    perBucket[bucket] = { objects: objects.length, copied: 0, skipped: 0 };
+    for (const o of objects) {
+      const key = `files/${bucket}/${o.name}`;
+      manifest.push({ bucket, name: o.name, size: o.size, updatedAt: o.updatedAt });
+      if (await backupHasFile(env, key, o.size)) {
+        skipped++; perBucket[bucket].skipped++;
+        continue;
+      }
+      bytes += await backupCopyFile(env, bucket, o.name);
+      copied++; perBucket[bucket].copied++;
+    }
+  }
+
+  /* ⚠️ THE MANIFEST IS WRITTEN LAST, AFTER EVERY COPY HAS LANDED. Written
+     first, a job that died halfway would leave a file claiming objects that are
+     not in R2 — the same "looks complete and is not" failure the throw above
+     exists to prevent. */
+  const name = backupFilesName();
+  await env.BACKUPS.put(name, JSON.stringify({
+    store: STORE.fsr,
+    takenAt: new Date().toISOString(),
+    buckets: perBucket,
+    copied, skipped, bytes,
+    files: manifest,
+  }), { httpMetadata: { contentType: "application/json" } });
+
+  return { file: name, copied, skipped, files: manifest.length, bytes, buckets: perBucket, ms: Date.now() - startedAt };
+}
+
+/* ⚠️⚠️ THE STORE IS IN THE FILENAME, AND THAT IS NOT COSMETIC.
+
+   The name was `backup-<date>.json` with nothing to say whose it was. Two
+   stores in one Cloudflare account both run this at 3am and both write the
+   SAME key to the SAME bucket — last writer wins, one store's nightly backup
+   is silently destroyed, and BOTH jobs answer ok. Nobody finds out until
+   restore day, which is the exact sentence this job was written to prevent.
+
+   ⚠️ IT REACHES THAT STATE BY ACCIDENT, NOT BY CHOICE. `newstore.mjs` did not
+   rewrite `bucket_name` in wrangler.toml, so a store generated today pointed
+   at the origin's bucket without anybody deciding to share one. That is fixed
+   there too — this is the belt to that pair of braces, because a shared bucket
+   is a perfectly reasonable thing for somebody to set up on purpose one day.
+
+   ⚠️ THE DATE IS THE STORE'S, NOT UTC. A job running at 3am ET is already
+   tomorrow in UTC, so a UTC name would file every backup under the wrong day
+   and overwrite the previous one on the same date.
+
+   ⚠️ OLD FILES KEEP THEIR OLD NAMES and nothing reads them by name — they are
+   restored by hand — so this changes where tonight's lands, never what is
+   already there. */
+const backupName = () => `backup-${STORE.fsr}-${isoOfD(nowET())}.json`;
+
+async function runBackup(env) {
+  /* ⚠️ A REHEARSAL WRITES NOTHING. Same rule every other sender in this file
+     follows, and it matters more here: a quiet run that wrote the file would
+     overwrite the night's real backup with a test. */
+  if (env && env.__QUIET) return { quiet: true, wouldWrite: backupName() };
+  /* ⚠️⚠️ THROWS, RATHER THAN RETURNING AN ERROR OBJECT. It used to `return
+     { error: "no BACKUPS bucket bound" }`, and the dispatcher wraps whatever a
+     job returns in `ok: true` — so a store with no bucket answered SUCCESS,
+     noteJobRun stamped a good run, and the heartbeat moved. The dead-man check
+     would then report the backup healthy at a store that has never once backed
+     anything up. That is the exact shape this whole system keeps paying for: a
+     failure that reports success. A missing bucket is a broken deployment, and
+     a broken deployment must be loud. */
+  if (!env || !env.BACKUPS) throw new Error("no BACKUPS bucket bound — the R2 binding is missing from wrangler.toml");
+
+  const startedAt = Date.now();
+  const data = {};
+  const counts = {};
+  for (const { table, order } of BACKUP_TABLES) {
+    const rows = await backupReadTable(env, table, order);
+    data[table] = rows;
+    counts[table] = rows.length;
+  }
+
+  const name = backupName();
+  const body = JSON.stringify({
+    store: STORE.fsr,
+    takenAt: new Date().toISOString(),
+    counts,
+    tables: data,
+  });
+
+  await env.BACKUPS.put(name, body, {
+    httpMetadata: { contentType: "application/json" },
+  });
+
+  const total = Object.values(counts).reduce((n, v) => n + v, 0);
+
+  /* ★★ AND THE FILES, IN THE SAME RUN. Matt, Aug 20 2026. One job, because a
+     second cron entry is a second thing to set up and a second thing to notice
+     has stopped — and this repo has already paid for a job with no entry.
+
+     ⚠️⚠️ THE TABLES ARE WRITTEN FIRST AND ARE ALREADY SAFE BY THIS POINT. If
+     the file half throws, the throw reaches the caller and the run is reported
+     failed, which is correct — but the table backup for tonight is on disk
+     rather than lost to an all-or-nothing job. Ordering, not error handling. */
+  const files = await runBackupFiles(env);
+
+  return {
+    file: name, rows: total, counts, bytes: body.length,
+    files, ms: Date.now() - startedAt,
+  };
+}
+
 async function runBoilOutFry(env) {
   const now = nowET();
   const dow = now.getDay();
@@ -5245,7 +5525,7 @@ async function sweepCopyOut(env, subject, text) {
    ⚠️ IT DOES NOT GATE ANYTHING. Dispatch is the chain, not this list, so a
    name missing here can never stop a job running. */
 const KNOWN_JOBS = [
-  "adoption-check", "ai-summary", "audit-order-calc", "boilout-fry",
+  "adoption-check", "ai-summary", "audit-order-calc", "backup", "boilout-fry",
   "doc-chase",
   "boilout-henny", "cleaning-summary", "emails-migrate", "eos",
   "equip-reminder-flag", "eval-due-reminders", "foodsafety-assign",
@@ -9897,6 +10177,7 @@ export default {
           return Response.json({ ok: true, ran: job, ...r });
         }
         else if (job === "audit-order-calc") await runAuditOrderCalc(env);
+        else if (job === "backup") { const r = await runBackup(env); return Response.json({ ok: true, ran: job, ...r }); }
           /* ★★ RETIRED Aug 5 2026, kept as a live no-op on purpose.
              Matt reviewed the whole schedule against five weeks of real usage
              and said "I'll remove any slack posts you suggest". These are the

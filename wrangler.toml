@@ -80,3 +80,12 @@ id = "SET-THIS-TO-THE-NEW-STORE-KV-NAMESPACE-ID"
 #   Audit Order Calc        — Monday & Thursday 4:00 AM
 #   Food Safety Reminder    — Daily 8:00 AM
 #   Equipment Reminder Flag — Monday 6:00 AM
+
+# ⚠️ THIS STORE'S OWN BUCKET, AND THE NAME IS THE WHOLE SAFETY. Every clone's
+# backup writes a file named for the store's FSR and the date. Two stores
+# pointed at one bucket means the second run of the night overwrites the first,
+# with BOTH jobs reporting success. newstore.mjs rewrites this line for exactly
+# that reason; it is set here by hand because this clone predates that step.
+[[r2_buckets]]
+binding = "BACKUPS"
+bucket_name = "spare-hub-backups"
