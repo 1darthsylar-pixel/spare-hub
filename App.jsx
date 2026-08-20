@@ -477,6 +477,38 @@ const RED = "#DD0031";
 const TEAL = "#0F766E";
 const NAVY = "#1E3A8A";
 const LEAD = "#3730A3"; // Leadership section accent (indigo — same blue family as People/Team)
+/* ⛔⛔ ONE RHYTHM FOR EVERY TILE ROW, AND `auto-fill` IS THE WHOLE POINT.
+
+   Matt, Aug 20 2026, off a laptop screenshot: "On the home pages the pinned
+   tools are too long and don't match."
+
+   ⚠️⚠️ `auto-fit` COLLAPSES THE EMPTY TRACKS, so a row's tile width depends on
+   HOW MANY TILES THAT ROW HAPPENS TO HAVE. Measured that day, three rows stacked
+   on one screen, each with its own width:
+
+     Start here   2 tools    -> 2 tracks  -> half-width tiles
+     Pinned       3 tools    -> 3 tracks  -> third-width tiles
+     Sections     6 tiles    -> 4 tracks  -> quarter-width tiles
+
+   Nothing was wrong with any row on its own. They were wrong TOGETHER, which is
+   why it reads as "don't match" rather than as a bug in one place.
+
+   ⇒ `auto-fill` KEEPS the empty tracks, so every row uses the same track width
+   and a short row simply ends early. The rows line up into one column.
+
+   ⚠️ AND THE THREE HOME ROWS WERE THE ODD ONES OUT, NOT THE MAJORITY. The
+   section drill-down, the locked list and the search results were already
+   `auto-fill, minmax(240px, 1fr), gap 12`. The home page carried `auto-fit,
+   minmax(230px, 1fr), gap 14` — a second rhythm ten pixels and two pixels away
+   from the first, close enough that nobody spotted it and far enough that the
+   tiles changed size when you drilled into a section.
+
+   ⛔ USE THIS OBJECT. Do not retype the grid. That is how the two rhythms got
+   there, and `tileGrid.test.mjs` fails on any tile grid that spells its own.
+   ⚠️ The column COUNT does not change at this page width: 4 columns either way
+   (4x240+3x12 = 1008, and 5 would need 1248). Only the rhythm was unified. */
+const TILE_GRID = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 };
+
 const INK = "#13293F";
 const INKGRAD = "linear-gradient(120deg,#1D4266 0%,#0B1826 55%)"; // dual-shade masthead
 const PEAK = "#1B2A4A"; // Peak Reachers navy (from the program logo)
@@ -4772,7 +4804,7 @@ export default function App() {
                 Tap any tile below to pin it here.
               </div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 14 }}>
+              <div style={TILE_GRID}>
                 {pinnedTools.map((tool) => (
                   <Tile key={tool.id} tool={tool} color={tool.color} badge={badgeFor(tool.id)} inputStatus={toolInputStatus[tool.id]}
                     pinMode={pinMode} isPinned onTogglePin={togglePin}
@@ -4799,7 +4831,7 @@ export default function App() {
              Moving it under the KPI strip put Company Health directly beneath
              it and the two rendered flush against each other. 18 matches the
              Pinned block above it. */
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 14, marginBottom: 18 }}>
+          <div style={{ ...TILE_GRID, marginBottom: 18 }}>
             {shownSections.map((section) => {
               /* 🐛 `featureOn` WAS MISSING HERE (Matt, Aug 12 2026: "Why is
                  something locked for me. I should see everything."). He is the
@@ -5107,7 +5139,7 @@ export default function App() {
                     {section.label}
                   </span>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+                <div style={TILE_GRID}>
                   {(section.tools || []).map((tool) => (
                     <Tile
                       key={tool.id}
@@ -5141,7 +5173,7 @@ export default function App() {
                       </span>
                     </button>
                     {lockedOpen && (
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+                      <div style={TILE_GRID}>
                         {sectionLocked.map((tool) => (
                           <Tile key={tool.id} tool={tool} color={tool.color} locked badge={0} onClick={() => openTool(tool)} />
                         ))}
@@ -6284,7 +6316,7 @@ export default function App() {
         {/* ── Search results ──────────────────────────────────────── */}
         {!openSection && searching && (
           results.length > 0 ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+            <div style={TILE_GRID}>
               {results.map((tool) => (
                 <Tile
                   key={tool.id}
@@ -6337,7 +6369,7 @@ export default function App() {
                 {startHereTools.some((x) => x.mine) ? " · yours first" : ""}
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 14 }}>
+            <div style={TILE_GRID}>
               {startHereTools.map(({ tool, mine }) => (
                 <div key={`sh-${tool.id}`} style={{ position: "relative" }}>
                   {/* Same "Yours" voice as the register rows — one word, same
