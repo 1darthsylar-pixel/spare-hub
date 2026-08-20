@@ -226,8 +226,16 @@ group("7. job codes map to BOH sections, unmatched stays roster-only");
   ok("Fries", mapJobToSection("Fries") === "FRY STATION");
   ok("Machines", mapJobToSection("Machines") === "MACHINES");
   ok("Prep", mapJobToSection("Bulk Prep") === "PREP");
-  ok("Truck", mapJobToSection("Truck") === "TRUCK / RECEIVING");
-  ok("Dish", mapJobToSection("Dish") === "DISH / SANITATION");
+  /* ⚠️ ONE SECTION SINCE Aug 20 2026. Matt: "The truck and dish cards can be
+     combined into one." Both rules were merged in place rather than appended,
+     so a Dish shift still cannot fall through to the generic /kitchen/ rule
+     below and land on SECONDARY. All four spellings are graded because the
+     merged regex is now the only thing standing between them and that. */
+  ok("Truck", mapJobToSection("Truck") === "TRUCK / DISH");
+  ok("Receiving too", mapJobToSection("Receiving") === "TRUCK / DISH");
+  ok("Dish", mapJobToSection("Dish") === "TRUCK / DISH");
+  ok("Sanitation too", mapJobToSection("Sanitation") === "TRUCK / DISH");
+  ok("★ and Dish does NOT fall through to the kitchen rule", mapJobToSection("Dish") !== "SECONDARY");
   ok("Nuggets are secondary", mapJobToSection("Nuggets") === "SECONDARY");
   ok("Primary Point", mapJobToSection("Primary Point") === "PRIMARY");
   ok("Kitchen Leader is leadership", mapJobToSection("Kitchen Leader") === "LEADERSHIP");
@@ -236,7 +244,9 @@ group("7. job codes map to BOH sections, unmatched stays roster-only");
   ok("and does NOT fall through to the kitchen rule", mapJobToSection("Kitchen Leader") !== "SECONDARY");
   ok("Drive Thru is not a BOH section", mapJobToSection("DRIVE THRU") === null);
   ok("no job is no section", mapJobToSection("") === null);
-  ok("the map is a real list", Array.isArray(BOH_JOB_MAP) && BOH_JOB_MAP.length === 12, BOH_JOB_MAP.length);
+  /* 12 until the truck/dish merge on Aug 20 2026, 11 after. The count is here
+     so a rule vanishing in a tidy-up is loud rather than silent. */
+  ok("the map is a real list", Array.isArray(BOH_JOB_MAP) && BOH_JOB_MAP.length === 11, BOH_JOB_MAP.length);
   const fromWeek = scheduleRowsFor(WEEK, "Monday");
   ok("a BOH shift carries its section through", (fromWeek.find((r) => r.id === "18") || {}).section === "BREADING");
   const foh12 = fromWeek.find((r) => r.id === "12");

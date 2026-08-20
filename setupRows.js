@@ -28,8 +28,16 @@ export const BOH_JOB_MAP = [
   { re: /fry|fries|hash/i, section: 'FRY STATION' },
   { re: /machine/i, section: 'MACHINES' },
   { re: /\bprep\b/i, section: 'PREP' },
-  { re: /truck|receiv/i, section: 'TRUCK / RECEIVING' },
-  { re: /dish|sanit/i, section: 'DISH / SANITATION' },
+  /* ⚠️ ONE SECTION, AND IT USED TO BE TWO. Matt, Aug 20 2026, off a Daily
+     Setup screenshot: "The truck and dish cards can be combined into one."
+     Each held exactly ONE station, so the board spent two whole section headers
+     and two cards on two rows. They are also the same kind of work at opposite
+     ends of the day - truck is 5:00-8:30am, dish is 5:00-11:00pm - so nobody is
+     ever looking at both at once.
+     ⚠️ MERGED IN PLACE, NOT APPENDED. These sit above the generic /kitchen/ and
+     /cook/ rules on purpose and first match wins, so moving them would send a
+     "Dish" shift to SECONDARY. */
+  { re: /truck|receiv|dish|sanit/i, section: 'TRUCK / DISH' },
   { re: /biscuit|egg|nugget|strip|soup|\bmac\b|secondary/i, section: 'SECONDARY' },
   { re: /board|sandwich/i, section: 'PRIMARY' },
   { re: /primary|point|special/i, section: 'PRIMARY' },

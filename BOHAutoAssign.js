@@ -59,6 +59,7 @@
    The engines must stay runnable outside React — nothing else may be added. */
 import { boardIds, isGateCity, boardNamePatterns } from "./storeConfig.js";
 import { bareId } from "./nameMatch.js";
+import { BOH_JOB_MAP, mapJobToSection } from "./setupRows.js";
 
 /* ★ HOURS PARSING COMES FROM THE LEAF, not a private copy. This file had its
    own 16-line parseRanges that could not read the two-clock form; the board's
@@ -93,26 +94,15 @@ function fmtClockShort(h) {
   return mm ? `${disp}:${String(mm).padStart(2, "0")}` : `${disp}`;
 }
 
-/* ---- job code → BOH section (kept in sync with DailySetup.jsx's map) ---- */
-const BOH_JOB_MAP = [
-  { re: /bread/i, section: "BREADING" },
-  { re: /load|filter|thaw/i, section: "BREADING" },
-  { re: /fry|fries|hash/i, section: "FRY STATION" },
-  { re: /machine/i, section: "MACHINES" },
-  { re: /\bprep\b/i, section: "PREP" },
-  { re: /truck|receiv/i, section: "TRUCK / RECEIVING" },
-  { re: /dish|sanit/i, section: "DISH / SANITATION" },
-  { re: /biscuit|egg|nugget|strip|soup|\bmac\b|secondary/i, section: "SECONDARY" },
-  { re: /board|sandwich/i, section: "PRIMARY" },
-  { re: /primary|point|special/i, section: "PRIMARY" },
-  { re: /kitchen lead|kitchen manager|kitchen mgr/i, section: "LEADERSHIP" },
-  { re: /\bcook\b|kitchen|\bboh\b|grill/i, section: "SECONDARY" },
-];
-function mapJobToSection(job) {
-  if (!job) return null;
-  const hit = BOH_JOB_MAP.find((j) => j.re.test(job));
-  return hit ? hit.section : null;
-}
+/* ---- job code → BOH section ----
+   ⛔⛔ THIS FILE USED TO KEEP ITS OWN COPY, headed "kept in sync with
+   DailySetup.js's map". It was not kept in sync by anything except somebody
+   remembering, and there were THREE spellings of one rule in the repo.
+
+   ⇒ ONE DEFINITION, in setupRows.js, which imports nothing and can therefore be
+   executed by a test. Merging TRUCK / RECEIVING and DISH / SANITATION on
+   Aug 20 2026 would otherwise have been a three-file edit where forgetting one
+   sends every imported Dish shift to a section that no longer exists. */
 
 /* job code → STATION match within a section. The section tells us which
    board a person belongs to; this tells us WHICH STATION on it. Without it a
