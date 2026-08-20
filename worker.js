@@ -2062,28 +2062,67 @@ async function runCleaningSummary(env) {
   const lines = [];
   let grandDone = 0, grandTotal = 0;
 
+  /* ⛔⛔ THESE READS RUN TOGETHER, AND THEY USED TO RUN ONE AFTER ANOTHER.
+     Two houses times six days, twice over — a config read and a signature read
+     each — is **24 sequential round trips to Supabase**, every one waiting on
+     the one before it. Then this function still has a channel post, a DM and a
+     push to do. That is what made this the heaviest job in the fleet and the
+     one the origin store watched fail on a 30-second timeout.
+     ⚠️ NOTHING HERE DEPENDS ON ANYTHING ELSE HERE, so waiting between them
+     bought nothing. The OUTPUT ORDER is unchanged on purpose — only the
+     fetching is parallel. A reordered report would look like a different bug.
+
+     🐛🐛 AND A REFUSED READ USED TO REPORT AS "NOBODY SIGNED OFF", TO A REAL
+     PERSON. `sbGet` answers null for "absent" and for "Supabase said no"
+     alike, and `|| {}` turned both into an empty signature sheet — so one
+     dropped read printed `FOH Monday: 0/12 signed off`, counted twelve misses
+     into the store total, and DMed the cleaning owner that her week was
+     outstanding when it may have been finished.
+     ⇒ `sbGetStrict` throws on a refusal and still answers null for a key that
+     genuinely is not there. Each read is caught on its own, so one bad key
+     cannot lose the other twenty-three.
+     ⚠️ AN UNREADABLE DAY IS LEFT OUT OF THE TOTALS ENTIRELY rather than counted
+     as zero or as complete. Both of those are claims we cannot make. It is
+     named in the report instead, and the percentage stays true for the days we
+     could actually read. */
+  const slots = [];
   for (const house of ["FOH", "BOH"]) {
-    const cfgAll = {};
-    for (const day of CLEAN_DAYS) {
-      cfgAll[day] = (await sbGet(env, `cleaning-cfg:${house}:${day}`)) || CLEAN_DEFAULT_CFG;
-    }
-    for (const day of CLEAN_DAYS) {
-      const tasks = cleanBuildTasks(house, day, cfgAll[day]);
-      const sigs = (await sbGet(env, `cleaning:${weekKey}:${house}:${day}`)) || {};
-      const field = house === "FOH" ? "cleaned" : "checked";
-      const done = tasks.filter((t) => (sigs[t.key]?.[field] || "").trim()).length;
-      grandDone += done; grandTotal += tasks.length;
-      if (tasks.length > 0 && done < tasks.length) {
-        lines.push(`• ${house} ${day}: ${done}/${tasks.length} signed off`);
-      }
-    }
+    for (const day of CLEAN_DAYS) slots.push({ house, day });
   }
+  const readOr = (pr) => pr.then((v) => ({ ok: true, v })).catch(() => ({ ok: false, v: null }));
+  const fetched = await Promise.all(slots.flatMap(({ house, day }) => [
+    readOr(sbGetStrict(env, `cleaning-cfg:${house}:${day}`)),
+    readOr(sbGetStrict(env, `cleaning:${weekKey}:${house}:${day}`)),
+  ]));
+
+  const unreadable = [];
+  slots.forEach(({ house, day }, i) => {
+    const c = fetched[i * 2];
+    const g = fetched[i * 2 + 1];
+    if (!c.ok || !g.ok) { unreadable.push(`${house} ${day}`); return; }
+    const cfg = c.v || CLEAN_DEFAULT_CFG;
+    const sigs = g.v || {};
+    const tasks = cleanBuildTasks(house, day, cfg);
+    const field = house === "FOH" ? "cleaned" : "checked";
+    const done = tasks.filter((t) => (sigs[t.key]?.[field] || "").trim()).length;
+    grandDone += done; grandTotal += tasks.length;
+    if (tasks.length > 0 && done < tasks.length) {
+      lines.push(`• ${house} ${day}: ${done}/${tasks.length} signed off`);
+    }
+  });
 
   const pct = grandTotal ? Math.round((grandDone / grandTotal) * 100) : 100;
+  /* ⚠️ "Everything is signed off" IS A CLAIM ABOUT THE WHOLE WEEK, so a day we
+     could not read has to take it away. Saying it while a read was refused is
+     the same lie as counting that day as zero, pointing the other direction. */
+  const missed = unreadable.length
+    ? `⚠️ Could not read ${unreadable.length} of ${slots.length} days, so they are NOT counted above: ${unreadable.join(", ")}.`
+    : "";
   const body =
     `*Daily Cleaning — week ${weekKey}*\n` +
     `${grandDone}/${grandTotal} tasks signed off (${pct}%)\n\n` +
-    (lines.length ? `Incomplete:\n${lines.join("\n")}` : "Everything is signed off. ✅");
+    (lines.length ? `Incomplete:\n${lines.join("\n")}` : (missed ? "" : "Everything is signed off. ✅")) +
+    (missed ? `${lines.length ? "\n\n" : ""}${missed}` : "");
 
   /* ★ THIS SUMMARY NOW HAS AN OWNER (Matt, Jul 28 2026: "point it at her").
      Cleaning belongs to Lizy, so the person accountable for it gets told
