@@ -696,10 +696,25 @@ export function buildDay({ stations, candidates, budgetHours, rules, state, used
   });
 
   for (let t = first; t <= last; t++) {
+    /* 🐛🐛 THE GAP MACHINE, FIXED. Ported from the origin store, Aug 20 2026.
+
+       One line below used to say `takenToday.add(best.id)`, which READS as
+       "stop offering this person" and MEANS "this person does not work today,
+       on either side of the building". Every day ends with a stretch of demand
+       shorter than a legal shift, so every day walked the entire remaining
+       roster and burned it there.
+
+       ⇒ Measured at the origin on its own Monday: 480 people in, 25 shifts
+       out, 455 marked used with no shift at all, and the side that built
+       second got an empty pool and produced NOTHING.
+
+       ⇒ `triedHere` is PER START SLOT. Somebody refused for this start is
+       offered the next one, and the other side still sees them. */
+    const triedHere = new Set();
     while (staffed[t] < need[t]) {
       /* Everybody who could start here and is not already on. */
       const pool = candidates.filter(
-        (c) => !takenToday.has(c.id) && canWorkAt(c, t) &&
+        (c) => !takenToday.has(c.id) && !triedHere.has(c.id) && canWorkAt(c, t) &&
           ((S.weekMin[c.id] || 0) / 60) < R.maxWeekHours,
       );
       if (!pool.length) break;
@@ -727,7 +742,7 @@ export function buildDay({ stations, candidates, budgetHours, rules, state, used
          it shows up as a gap somebody can look at. */
       const minSlots = R.minShift / SLOT;
       if (end - t < minSlots) end = Math.min(hardEnd, t + minSlots);
-      if (end - t < minSlots) { takenToday.add(best.id); continue; }
+      if (end - t < minSlots) { triedHere.add(best.id); continue; }
 
       for (let x = t; x < end; x++) staffed[x]++;
       takenToday.add(best.id);
