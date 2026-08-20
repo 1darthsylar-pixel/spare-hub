@@ -848,8 +848,23 @@ function Leadership101Inner({ user, embedded = false, onBack, program = L101_PRO
      whole of what she reported. One list, used by the print buttons and the
      assigned-instructors panel below, so the two can never disagree about which
      classes have instructors. */
+  /* ★ EVERY WEEK SOMEBODY IS ASSIGNED TO, not four fixed ids. See
+     weekHasInstructors — an assignment is what switches a week on, so a week
+     Bri made this morning qualifies the moment she puts a name on it.
+     ⚠️ ONE READ, AND IT IS THE SAME KEY the sessions panel already fetches. It
+     runs on opening the class rather than on opening a panel, because the
+     answer decides what the class SHOWS, not what a panel shows.
+     ⚠️ A FAILED READ FALLS BACK TO THE SET, never to "no week has instructors".
+     Losing W2 and W3's instructor notes because a read dropped would be a much
+     worse day than not yet seeing a newly assigned week. */
+  const [assignsAll, setAssignsAll] = useState(null);
+  useEffect(() => {
+    let live = true;
+    (async () => { const a = await loadAssignments(); if (live) setAssignsAll(a.ok ? a.map : null); })();
+    return () => { live = false; };
+  }, []);
   const instructorWeeks = (weeks || [])
-    .filter((w) => weekHasInstructors(keyOf(w), PG.ns))
+    .filter((w) => weekHasInstructors(keyOf(w), PG.ns, assignsAll))
     .map((w) => ({ id: keyOf(w), title: w.title || keyOf(w), label: w.label || `WK ${w.n}` }));
   const hasInPerson = instructorWeeks.length > 0;
   /* Printable copy of an in-person week (Bri: "spotty internet… someone simply
@@ -2069,7 +2084,7 @@ function Leadership101Inner({ user, embedded = false, onBack, program = L101_PRO
           {M
             ? <M />
             : <L101Week weekId={openHub} weekLabel={custom.title} seed={EMPTY_SEED} sequential={false}
-                instructors={weekHasInstructors(openHub, PG.ns)} />}
+                instructors={weekHasInstructors(openHub, PG.ns, assignsAll)} />}
         </div>
       );
     }

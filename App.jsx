@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useLayoutEffect, useRef, lazy, Suspense } from "react";
 /* The raised-card look, one definition — see cardStyle.js. It was written out
    13 times in this file and had drifted from the setup cards. */
 import { CARD_3D, accentEdge, cardSurface, cardSurfaceBack, CARD_3D_SOFT } from "./cardStyle.js";
@@ -3476,21 +3476,34 @@ export default function App() {
      every dashboard load to render nothing.
      ⚠️ FAILS TO ZERO, NEVER TO A GUESS. A refused or dropped read leaves the
      badge off rather than showing a stale or invented number. */
+  /* 🐛 AND IT ONLY EVER RAN ONCE. Matt, Aug 19 2026: "I accepted the meeting
+     but the alert won't clear." This effect is keyed on `[user]`, so the count
+     was fetched when the Hub loaded and never again — correct when it was
+     drawn, stale from the next tap onwards, and clearable only by a full
+     reload. Answering happens in CalendarInvites, several screens away, and
+     nothing told the header.
+     ⇒ ONE FETCH, TWO TRIGGERS: sign-in, and the tile saying somebody answered.
+     ⚠️ THE COUNT IS STILL COMPUTED HERE, through the same `awaitingReply`. The
+     event carries no number — it says "ask again" and nothing else — because a
+     count sent from the tile would be a second answer to the same question, and
+     this file already records what two answers to one question cost. */
   const [calPending, setCalPending] = useState(0);
-  useEffect(() => {
-    if (!user || !isCalendarOwner(user.role)) { setCalPending(0); return undefined; }
-    let alive = true;
-    (async () => {
-      try {
-        const r = await fetch("/api/calendar-mine", { headers: { "x-hub-token": hubToken() }, cache: "no-store" });
-        const d = await r.json().catch(() => null);
-        if (!alive || !d || !d.ok) return;
-        const evs = (Array.isArray(d.invited) ? d.invited : []).map((x) => x && x.event).filter(Boolean);
-        setCalPending(awaitingReply(evs, d.uid, d.myReplies).length);
-      } catch { /* the badge stays off */ }
-    })();
-    return () => { alive = false; };
+  const refreshCalPending = useCallback(async () => {
+    if (!user || !isCalendarOwner(user.role)) { setCalPending(0); return; }
+    try {
+      const r = await fetch("/api/calendar-mine", { headers: { "x-hub-token": hubToken() }, cache: "no-store" });
+      const d = await r.json().catch(() => null);
+      if (!d || !d.ok) return;
+      const evs = (Array.isArray(d.invited) ? d.invited : []).map((x) => x && x.event).filter(Boolean);
+      setCalPending(awaitingReply(evs, d.uid, d.myReplies).length);
+    } catch { /* the badge stays as it is — never invented, never guessed */ }
   }, [user]);
+  useEffect(() => { refreshCalPending(); }, [refreshCalPending]);
+  useEffect(() => {
+    const onAnswered = () => { refreshCalPending(); };
+    window.addEventListener("hub:calendar-answered", onAnswered);
+    return () => window.removeEventListener("hub:calendar-answered", onAnswered);
+  }, [refreshCalPending]);
   useEffect(() => {
     if (!myId) return undefined;
     let alive = true;
@@ -3837,7 +3850,34 @@ export default function App() {
      everything is fine. Ownership is shown on the row, not on the tile. */
   /* Plain call, not useMemo — this file does not import it, and one pass over
      ~31 rows on a render that is already doing far more is not worth a hook. */
-  const toolInputStatus = inputStatusByTool(allInputs);
+  const toolInputStatusRaw = inputStatusByTool(allInputs);
+  /* ⛔ A RED DIGIT IS NOT AN ALERT. Bri, Aug 19 2026, on the badge shipped an
+     hour earlier: "I see a red digit, but I don't see any wording that tells me
+     where to go" and "I still don't know where these are able to be viewed and
+     signed."
+
+     She is right, and the count on its own was half a feature. A number tells
+     somebody that something is true; it does not tell them what to do about it,
+     and a team member who has never opened HR Console has no reason to think a
+     policy document lives behind a tile called "View your profile and set your
+     PIN".
+
+     ⇒ IT REUSES THE ROW THAT ALREADY EXISTS. `inputStatus` is the tile line
+     that says what a tool needs instead of describing the tool — Matt's "group
+     input health items with each tool or area" from Jul 29. A document waiting
+     for a signature is exactly that shape, so it goes there rather than
+     becoming a second banner competing with the first.
+     ⚠️ IT DOES NOT OVERWRITE A REAL INPUT WARNING. If the tile already has
+     something to say, that stays; this only fills an empty line. Two claims on
+     one row and the louder one wins is how a store stops reading either. */
+  const toolInputStatus = docsToSign > 0 && !toolInputStatusRaw.hr
+    ? { ...toolInputStatusRaw, hr: {
+        tone: "offgoal",
+        text: docsToSign === 1
+          ? "1 document waiting for you to sign — open your own file"
+          : `${docsToSign} documents waiting for you to sign — open your own file`,
+      } }
+    : toolInputStatusRaw;
   /* Inputs a vendor bridge could import — the pitch to Nick and Corp. */
   const bridge = inputBridge(allInputs);
   /* Which Hub section a row's tool lives in. ONE definition — SECTIONS, right
