@@ -1,3 +1,18 @@
+# ⛔⛔ THIS FILE PROBED THE ORIGIN STORE'S DOORS, NOT THIS STORE'S.
+# Corrected Aug 20 2026. It was copied whole from the origin and nothing in the
+# generator rewrote the address, so this store's scheduled Action knocked on
+# gatecityhub.com and stamped the ORIGIN's probe heartbeat with this store's
+# key. Two costs, both silent:
+#   · this store's OWN doors were never probed from outside, ever
+#   · this store's security sweep therefore said "the doors are not being
+#     watched from outside" every day it ran, for ever, and its own suggested
+#     fixes could not cure it
+# ⚠️ THE MARKER IS DELIBERATE AND MAKES THE WORKFLOW FAIL. This store has no
+# web address in storeConfig yet, and a probe against a marker host returns 000,
+# which is not the 401 it expects, so the run goes red. That is the right way
+# round: red is a failure somebody fixes, and knocking on somebody else's door
+# is a failure nobody sees. Replace both with this store's own address the day
+# it has one. The generator does this for every store built from now on.
 name: door-probes
 # Outside 401 probes for the Gate City Hub (built Aug 1 2026, Matt's sweep).
 # Knocks on every session-token door with NO token and expects to be told no,
@@ -23,7 +38,7 @@ jobs:
           set -u
           FAILS=""
           probe () { # $1 name  $2 method  $3 path — expect 401 with no token
-            CODE=$(curl -s -o /dev/null -w "%{http_code}" -X "$2" "https://gatecityhub.com$3" --max-time 30 || echo 000)
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" -X "$2" "https://SET-THIS-TO-THE-STORE-WEB-ADDRESS$3" --max-time 30 || echo 000)
             echo "$1 -> $CODE"
             if [ "$CODE" != "401" ]; then FAILS="$FAILS,$1:$CODE"; fi
           }
@@ -44,5 +59,5 @@ jobs:
           probe ai-summary    GET  /api/ai-summary
           FAILS="${FAILS#,}"
           if [ -n "$FAILS" ]; then STATUS=fail; else STATUS=pass; fi
-          curl -s "https://gatecityhub.com/api/run-job?job=probe-heartbeat&key=${{ secrets.HUB_JOB_KEY }}&quiet=1&status=$STATUS&fails=$FAILS" > /dev/null
+          curl -s "https://SET-THIS-TO-THE-STORE-WEB-ADDRESS/api/run-job?job=probe-heartbeat&key=${{ secrets.HUB_JOB_KEY }}&quiet=1&status=$STATUS&fails=$FAILS" > /dev/null
           echo "reported: $STATUS ${FAILS:+($FAILS)}"
