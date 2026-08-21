@@ -119,6 +119,7 @@ const ScheduleConsole = lazy(() => import("./ScheduleConsole.jsx"));
    setting could arrive. Tool entries name their list with `allowIdsFrom` now
    and toolAllowsId resolves it at use time. */
 import { tileAllowIds, STORE, storeCfg, programLabel, tokenLabel } from "./storeConfig.js";
+import { onSigned } from "./signedTick.js";
 import { loadItemGaps, priorMonthGaps } from "./foodItemGaps.js";
 import { eosPeriod } from "./eosPeriod.js";
 import { METRIC_PLAYBOOKS } from "./metricPlaybooks.js";
@@ -2582,6 +2583,33 @@ export default function App() {
     } catch { if (live) setGoalsDue(0); }
   })(); return () => { live = false; }; }, [user]);
 
+/* ── "I JUST SIGNED SOMETHING" ─────────────────────────────────────────────
+     🐛 Bri, Aug 21 2026 reported the red digit carried no wording. That was
+     fixed. This is the half left behind, and it is the half a person feels:
+     they sign the document, come back here, and the red number is still there
+     until they reload the page.
+
+     ⚠️⚠️ NOTHING IS BROKEN UNDERNEATH — the signature really is stored. Both
+     counts below come from reads that only re-run when `user` or `tier`
+     changes, and signing changes neither. So the screen is showing a true
+     answer to a question it asked before the signature existed.
+
+     ⛔ AND "IT DID NOT SAVE" IS THE OBVIOUS READING, not a stretch. Every
+     signature in this area once failed for real, with a permission refusal
+     wearing a network error's clothes. Somebody who lived through that and
+     now watches the number sit still has no way to tell the two apart.
+
+     ⇒ `signedTick.js` is the signal, published by whichever screen recorded
+     the signature. It carries NO count — a number sent from the signing screen
+     is a guess about the server's state, and a wrong red number is the bug.
+     It says "ask again", and the answer still comes from the server.
+     ⚠️ THE SUBSCRIBE IS NOT THE FIX. Putting `signedAt` in the dependency
+     lists below is. A subscription that bumps a value nothing depends on is a
+     no-op that reads like a repair, which is why the test asserts the lists
+     and not the subscribe. */
+  const [signedAt, setSignedAt] = useState(0);
+  useEffect(() => onSigned((n) => setSignedAt(n)), []);
+
 /* ── DOCUMENTS THIS PERSON HAS BEEN ASKED TO SIGN ────────────────────────
      Bri, Aug 17 2026 and again Aug 19: "I sent an SOP document to sign. Nobody
      can see it... I don't know where these are going right now."
@@ -2605,7 +2633,7 @@ export default function App() {
       const r = await fetch("/api/my-docs", { headers: { "x-hub-token": hubToken() } }).then((x) => x.json());
       if (live) setDocsToSign(r && r.ok && Number.isFinite(Number(r.count)) ? Number(r.count) : 0);
     } catch { if (live) setDocsToSign(0); }
-  })(); return () => { live = false; }; }, [user]);
+  })(); return () => { live = false; }; }, [user, signedAt]);
 
   const [pendingRecs, setPendingRecs] = useState(0);
   useEffect(() => { let live = true; (async () => {
@@ -2809,7 +2837,10 @@ export default function App() {
       } catch {}
     })();
     return () => { alive = false; };
-  }, [user, tier]);
+    /* `signedAt` for the same reason as docsToSign above: signing your own
+       handbook does not change `user` or `tier`, so without it this stays
+       "unsigned" until the page is reloaded. */
+  }, [user, tier, signedAt]);
 
   // ── Daily input checklist — chips vanish as each item is submitted
   useEffect(() => {
