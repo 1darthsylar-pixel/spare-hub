@@ -18,6 +18,7 @@
    different way of saying no. Only section 6 says yes, and it says yes to
    exactly one claim.
    ============================================================================ */
+import { readFileSync } from "node:fs";
 import {
   DEFAULT_SWAP_POLICY, readSwapPolicy, autoDecision, dropCount, dropHistory, dropFlag, OFFER,
 } from "./shiftMarket.js";
@@ -181,6 +182,46 @@ group("7. ★ WHAT A LEADER SEES ABOUT SOMEBODY WHO KEEPS DROPPING");
   ok("★ somebody with no drops at all raises nothing", dropFlag(spread, "99", "2026-08-17", ON) === "");
   ok("★ the flag does NOT need auto approve switched on — a leader still wants to know",
     dropFlag(spread, "7", "2026-08-17", {}) !== "");
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   🐛 THE POLICY HAS TO BE READ AT USE TIME, AND FOR A WHILE IT WAS NOT.
+
+   `swapPolicy` in Availability.jsx was a `useMemo(…, [])` — an EMPTY dependency
+   list — so it read `storeCfg` once at the tile's first render and held that
+   answer for the whole mount, while its own comment claimed it read at use time.
+
+   ⛔ IT LEANS THE DANGEROUS WAY. A store's saved settings arrive AFTER the file
+   imports, so a tile that mounted first froze the shipped default. And the
+   mirror is worse: Matt switching auto approval OFF in Store Settings did not
+   reach a leader who already had the screen open, so swaps kept going through
+   on their own until they navigated away.
+
+   ⚠️ THIS IS A GREP AND IT SAYS SO. A React hook cannot be run from Node, so
+   what is asserted is the SHAPE — that the three reads are not inside a memo
+   with an empty dependency list. Both halves carry a control that must be
+   FOUND, because a grep that matches nothing reports clean for everything.
+   ══════════════════════════════════════════════════════════════════════════ */
+{
+  const AV = readFileSync(new URL("./Availability.jsx", import.meta.url), "utf8");
+  ok("Availability.jsx was read (control)", AV.length > 100000, String(AV.length));
+  /* ⚠️ SLICE TO THE NEXT BLANK LINE, NOT A SHAPE-SPECIFIC REGEX. A pattern that
+     only matched the CORRECT shape would fail to match the broken one, so the
+     real assertion below would never run and three controls would fire instead
+     — a red test that names the wrong thing. Measured: that is exactly what the
+     first version of this did. */
+  const at = AV.indexOf("const swapPolicy = ");
+  ok("the swapPolicy declaration is still there (control)", at > 0, String(at));
+  const end = AV.indexOf("\n\n", at);
+  const block = at < 0 ? "" : AV.slice(at, end < 0 ? at + 400 : end);
+  ok("★★ it still reads all three settings through storeCfg (control)",
+    /storeCfg\("swaps\.autoApprove"\)/.test(block)
+    && /storeCfg\("swaps\.minNoticeHours"\)/.test(block)
+    && /storeCfg\("swaps\.maxDropsPerWeek"\)/.test(block), block.slice(0, 120));
+  ok("★★★ AND IT IS NOT FROZEN IN A useMemo WITH AN EMPTY DEPENDENCY LIST",
+    !/useMemo/.test(block), block.slice(0, 200));
+  ok("★★ readSwapPolicy is still the guard — autoApprove must be the literal true",
+    /readSwapPolicy\(/.test(block));
 }
 
 if (fails.length) {

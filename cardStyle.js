@@ -475,3 +475,33 @@ export function toolRow(tone, strength = 0.9) {
     backgroundImage: cardSurface(tone || ACCENT_NEUTRAL, strength),
   };
 }
+
+/* A NOTE PANEL — the quiet inset box a tool drops inside a card to explain
+   itself: a tinted surface, a hairline ring, the accent edge and the shallow
+   shadow. Not a tile and not a row; it sits INSIDE a card and has to read as
+   recessed rather than raised.
+
+   🐛 THIS EXISTS BECAUSE THREE OF THEM LOST THEIR RING. Matt, Aug 21 2026:
+   "in labor and sales there are 3 boxes without a border." The five copies in
+   LaborPlanner were written out by hand, and the two that gained a border kept
+   it while the three that did not never got one. On a white card a panel with
+   no ring has no edge at all, so it reads as a gap in the layout rather than
+   as a box.
+
+   ⚠️ THE SAME FAILURE THIS FILE WAS CREATED TO STOP. The header above records
+   the shadow being written out thirteen times in App.jsx before it was pulled
+   into one place. A style copied by hand drifts the moment one copy is edited,
+   and the drift is invisible until somebody looks at two of them side by side.
+
+   ⚠️ THE RING TAKES A COLOUR because the callers' line colour is theirs, not
+   this leaf's — cardStyle.js imports nothing and holds no palette. */
+export function notePanel(tone, line, surface, strength = 0.4) {
+  const t = tone || ACCENT_NEUTRAL;
+  return {
+    backgroundColor: surface,
+    backgroundImage: cardSurface(t, strength),
+    border: `1px solid ${line}`,
+    ...accentEdge(t, 3),
+    boxShadow: CARD_3D_SOFT,
+  };
+}

@@ -52,6 +52,27 @@ export const HR_RANK_BY_TITLE = {
   "Senior Team Leader": 3, "Assistant Director": 4, Manager: 4, Director: 5,
   "Leadership Development Director": 6, "Leadership Director": 6,
   "Executive Director": 7, Executive: 7, "Human Resources": 7, Owner: 8,
+  /* ★★ THE HOST, NOT A TEAM MEMBER. Matt, Aug 15 2026: "change me to support
+     for all stores except my own." Backline Ops hosts the Village and Guilford,
+     and until now supporting a store meant being a person on its roster.
+
+     ⛔ IT IS RANK 8 ON PURPOSE, AND THE RANK IS THE WHOLE POINT OF THIS LINE.
+     An unrecognised title scores 0 (see `hrRankOfTitle` below), so retitling
+     somebody `Support` WITHOUT this entry drops them to team-member access the
+     instant it saves — no HR Console, no full HR read. That is precisely the
+     failure Hannah reported about Cindy in the note directly below, and the
+     reason `Operator` must never be typed as a Hub title.
+
+     ⚠️ RANK ALONE DOES NOT FINISH THE JOB. It buys the ACCESS half. The other
+     half is being left OUT of headcount, turnover, the accountability chart and
+     the team directory, because a host is not one of the store's people. Three
+     of those four are wired as of Aug 16 2026 through `isHostTitle` below; the
+     team directory is not, because its rows carry no title to read. This line
+     used to say the pass "is not done yet" and that a Support row "still counts
+     as staff" — half true now, which is why it is stated precisely here.
+     ⚠️ EXCLUDE BY TITLE, NEVER BY NAME. Matt is an ordinary Owner at his own
+     store and must stay counted there. */
+  Support: 8,
   /* ⚠️ ADDED Jul 31 2026 BEFORE the title change, deliberately in that order.
      Hannah asked to move Cindy from "Human Resources" to "Accounts Payable"
      while keeping "the same functions as me in the hub". An unknown title

@@ -649,11 +649,25 @@ export default function Availability({ tier, user, mode }) {
      captured at module load — a saved setting arrives after this file imports.
      ⚠️ `readSwapPolicy` is the guard: `autoApprove` has to be the literal true,
      so a store that has never opened the settings screen is OFF. */
-  const swapPolicy = useMemo(() => readSwapPolicy({
+  /* ⛔⛔ READ AT USE TIME, NEVER MEMOISED. This was a `useMemo(…, [])` — an
+     EMPTY dependency list — so it read the store's swap rules once at the
+     tile's first render and held that answer for the whole mount, while its
+     own comment claimed it read at use time.
+
+     🐛 TWO WAYS THAT BITES, and one of them is the dangerous direction. A
+     store's saved settings arrive AFTER this file imports, so a tile that
+     mounted first froze the shipped default. And turning auto approval OFF in
+     Store Settings did not reach a leader with the screen already open, so
+     SWAPS KEPT GOING THROUGH ON THEIR OWN until they navigated away.
+
+     ⚠️ THE MEMO BOUGHT NOTHING. It is three object lookups and nothing
+     downstream keys on the result. Found by a Fable audit at the origin store
+     on Aug 19 2026 and fixed there; this store still had it. */
+  const swapPolicy = readSwapPolicy({
     on: storeCfg("swaps.autoApprove"),
     minNoticeHours: storeCfg("swaps.minNoticeHours"),
     maxDropsPerWeek: storeCfg("swaps.maxDropsPerWeek"),
-  }), []);
+  });
 
   const codeIdx = useMemo(() => codeIndex(codes), [codes]);
   const strayCodes = useMemo(() => unclassified(skills, codes), [skills, codes]);

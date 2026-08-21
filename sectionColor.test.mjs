@@ -19,7 +19,7 @@
    ⇒ THE ONE ASSERTION THAT MATTERS is "a day missing a section does not move the
    sections after it". Everything else here is guarding the edges around it.
    ============================================================================ */
-import { sectionsOf } from "./storeConfig.js";
+import { sectionsOf, storeCfg } from "./storeConfig.js";
 import { SECTION_TINTS, sectionTint, shade } from "./cardStyle.js";
 
 let pass = 0, fail = 0;
@@ -162,33 +162,69 @@ group("7. shade — junk in does not put junk on a screen");
 
 group("8. ★★ THE SETUP BOARD'S OLD HARDCODED MAP, colour for colour");
 {
-  /* DailySetup carried its own map of THIS store's ten BOH section names to
-     these exact ten hexes. It was replaced by an index into SECTION_TINTS,
-     which fixes two things at once: one palette instead of two (rule 8), and a
-     coloured board for a store whose sections are named anything else, instead
-     of one flat accent on every row (rule 18).
+  /* DailySetup carried its own map of THIS store's BOH section names to these
+     exact hexes. It was replaced by an index into SECTION_TINTS, which fixes
+     two things at once: one palette instead of two (rule 8), and a coloured
+     board for a store whose sections are named anything else, instead of one
+     flat accent on every row (rule 18).
 
      ⚠️ THIS TEST IS THE PROOF THAT THE SWAP CHANGED NOTHING ANYBODY LOOKS AT.
-     It is not a restatement of the implementation: the map below is the literal
-     old constant, and the order below is the store's own config order, and the
-     two were written a year apart by different reasoning. If they ever stop
-     agreeing, the setup board silently recoloured. */
+     The map below is the literal old constant and the order is read from the
+     store's own live config, so the two are still independent.
+
+     ⛔⛔ TWO SECTIONS DELIBERATELY MOVED ON Aug 20 2026 AND THE COLOURS MOVED
+     WITH THEM. Matt: "The truck and dish cards can be combined into one." That
+     took TRUCK / RECEIVING and DISH / SANITATION down to one TRUCK / DISH, so
+     the board has NINE sections and everything after the merge shifted up one
+     index:
+
+       LEADERSHIP  #C026D4 -> #7C3AED   (took DISH's old slot)
+
+     ⚠️ AND READING THE LIVE CONFIG IMMEDIATELY FOUND SOMETHING THE OLD VERSION
+     HID. The hardcoded ORDER listed TEN sections including TRAINING. The store
+     has EIGHT, and TRAINING is not in `stations.BOH` at all - it comes from the
+     trainer rows. So two of the ten entries this file swore were "the store's
+     own config order" had never been in it. It passed anyway for a year,
+     because it was comparing a list to itself.
+
+     ★ THAT IS A CONSEQUENCE OF THE MERGE, NOT A BUG, and it is written here
+     rather than absorbed because this file exists to make a silent recolour
+     loud. Everything BEFORE the merge point is untouched, which is the six
+     sections most of the board actually is. */
   const OLD_MAP = {
     "PRIMARY": "#E11D48", "SECONDARY": "#EA580C", "FRY STATION": "#D97706",
     "MACHINES": "#65A30D", "BREADING": "#0D9488", "PREP": "#0891B2",
     "TRUCK / RECEIVING": "#2563EB", "DISH / SANITATION": "#7C3AED",
     "LEADERSHIP": "#C026D4", "TRAINING": "#DB2777",
   };
-  const ORDER = ["PRIMARY", "SECONDARY", "FRY STATION", "MACHINES", "BREADING",
-    "PREP", "TRUCK / RECEIVING", "DISH / SANITATION", "LEADERSHIP", "TRAINING"];
+  /* ⚠️ READ FROM THE LIVE CONFIG, NEVER RETYPED. The old version hardcoded the
+     order beside the map and claimed in a comment that it WAS the config order.
+     The merge above made that claim false and this file still printed ok, which
+     is the exact failure the rest of this repo keeps finding: a check that has
+     stopped reading the thing it grades does not go red. */
+  const ORDER = sectionsOf(storeCfg("stations.BOH"));
+  console.log(`        live section order: ${ORDER.join(" · ")}`);
+  t(`the store's sections were read (control) — ${ORDER.length}`, ORDER.length >= 6);
+  t("★★ TRUCK / DISH is one section now, not two",
+    ORDER.includes("TRUCK / DISH")
+    && !ORDER.includes("TRUCK / RECEIVING") && !ORDER.includes("DISH / SANITATION"));
 
-  t("the store still has ten BOH sections (control)", ORDER.length === 10);
-  ORDER.forEach((name, i) => {
-    t(`${name} keeps ${OLD_MAP[name]}`, sectionTint(i) === OLD_MAP[name].toUpperCase()
-      || sectionTint(i).toUpperCase() === OLD_MAP[name].toUpperCase());
+  /* The six before the merge point must be byte for byte what they always were. */
+  const UNMOVED = ["PRIMARY", "SECONDARY", "FRY STATION", "MACHINES", "BREADING", "PREP"];
+  UNMOVED.forEach((name) => {
+    const i = ORDER.indexOf(name);
+    t(`${name} keeps ${OLD_MAP[name]}`,
+      i >= 0 && sectionTint(i).toUpperCase() === OLD_MAP[name].toUpperCase());
   });
-  t("★ every section, unchanged",
-    ORDER.every((n, i) => sectionTint(i).toUpperCase() === OLD_MAP[n].toUpperCase()));
+  t("★ every section before the merge point is unchanged",
+    UNMOVED.every((n) => sectionTint(ORDER.indexOf(n)).toUpperCase() === OLD_MAP[n].toUpperCase()));
+
+  /* And the two that moved, pinned to where they moved TO, so a third
+     accidental shift is caught the same way this one was recorded. */
+  t("★★ the merged section took TRUCK's old colour",
+    sectionTint(ORDER.indexOf("TRUCK / DISH")).toUpperCase() === OLD_MAP["TRUCK / RECEIVING"].toUpperCase());
+  t("★★ LEADERSHIP moved up one and took DISH's",
+    sectionTint(ORDER.indexOf("LEADERSHIP")).toUpperCase() === OLD_MAP["DISH / SANITATION"].toUpperCase());
 
   /* And the reason the swap was worth doing: a store with different section
      names used to get ONE colour for the whole board. */

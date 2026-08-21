@@ -272,3 +272,45 @@ export const DAYPART_COLORS = {
 
 export const daypartColor = (key) =>
   DAYPART_COLORS[String(key || "").toLowerCase()] || { text: "#374151", bg: "#F9FAFB", dot: "#9CA3AF" };
+
+/* ── WHICH DAYPART IS IT RIGHT NOW ───────────────────────────────────────────
+   Matt, Aug 18 2026: "the ops checklists defaults to all when opening. i want
+   it to default to the active daypart."
+
+   ⚠️⚠️ IT ANSWERS IN THE STORE'S OWN VOCABULARY, NOT THE CALLER'S. Ops
+   Checklists thinks in Opening / Midday / Closing; this file thinks in whatever
+   four windows the store typed into `stations.dayparts`. Returning the caller's
+   three words from here would put one screen's tab names inside the module that
+   defines what a daypart IS, and the next screen with a different split would
+   need a second function beside it. It returns the key and the INDEX; the
+   caller maps the index onto its own tabs.
+
+   ⚠️ NO NEW NUMBERS. Every boundary comes from the store's own config (rule 18).
+   A store that reorders or renames its dayparts moves this with it, and a clone
+   that types two windows instead of four gets `null` rather than a guess.
+
+   ⚠️ `night.end` IS null BY DESIGN — the header explains why a store-wide
+   closing time is never guessed here. So the LAST daypart has no end and simply
+   runs to midnight from this function's point of view. That is right for a
+   "which tab should open" question and would be wrong for arithmetic; do not
+   reuse this to measure hours.
+
+   ⚠️ BEFORE THE FIRST WINDOW STARTS IS THE FIRST WINDOW. At 5am somebody is
+   opening the store, and sending them to a tab for a daypart that has not begun
+   would be the one time of day this is most likely to be read.
+
+   ⛔ THE CLOCK IS THE DEVICE'S. These are store iPads standing in the store, so
+   local time is the store's time. Do not add a timezone dependency for a
+   default tab — `worker.js` needs one because a cron fires from anywhere, and a
+   leader holding an iPad does not. */
+export function activeDaypart(now = new Date()) {
+  const list = Array.isArray(DAYPARTS) ? DAYPARTS.filter((d) => d && Number.isFinite(Number(d.start))) : [];
+  if (list.length < 2) return null;
+  const t = now.getHours() + now.getMinutes() / 60;
+  /* Sorted rather than trusted: the config is typed by hand and a list out of
+     order would otherwise pick whichever row happened to come first. */
+  const sorted = [...list].sort((a, b) => Number(a.start) - Number(b.start));
+  let i = 0;
+  for (let k = 0; k < sorted.length; k++) if (t >= Number(sorted[k].start)) i = k;
+  return { key: sorted[i].key, label: sorted[i].label, index: i, total: sorted.length };
+}

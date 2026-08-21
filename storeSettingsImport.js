@@ -247,6 +247,59 @@ export function checkStoreSettings(settings) {
         });
       }
     }
+
+    /* ★★ THE ACCESS LISTS, AND THEY WERE NOT CHECKED AT ALL UNTIL Aug 16 2026.
+       `owners.tileAllow`, `profitEdit`, `handbookExempt` and `hrConsole` decide
+       who may open a tier 4 tile, who may edit PROFIT SHARE, and who may open a
+       personnel file. Every one of them arrived here from a browser and went
+       straight into storage unexamined, because this validator only shape-checks
+       the keys it happens to know and passes the rest through.
+
+       ⚠️⚠️ THE FAILURE IS SILENT AND IT LEANS OPEN. `tileAllowsId` and friends
+       read these with `.includes(id)`, so a malformed list does not throw — it
+       just answers. A string instead of an array makes `.includes` do substring
+       matching, so `"1733"` would admit member "17", "33", "3" and "7". A list
+       of numbers admits nobody, because ids are compared as strings, and that
+       reads as "the setting did not save". Neither one is visible anywhere.
+
+       ⇒ Design rule 1: fail LOUDLY without saving rather than save something
+       wrong. A refused save gets reported; a quietly malformed access list does
+       not, and nobody looks at an ACL that appears to have worked.
+       ⚠️ AN EMPTY LIST IS STILL VALID AND MUST STAY VALID. Empty means nobody,
+       which is a real answer and the safe starting point for a new store. Only
+       a wrong SHAPE is an error. Graded by accessLists.test.mjs. */
+    const idList = (v, what) => {
+      if (!Array.isArray(v)) { errors.push(`The ${what} list is not a list.`); return; }
+      v.forEach((id, i) => {
+        if (typeof id !== "string" || !id.trim()) {
+          errors.push(`Entry ${i + 1} in the ${what} list is not a person's id.`);
+        }
+      });
+    };
+    if ("tileAllow" in own) {
+      if (!isPlain(own.tileAllow)) errors.push("The tile access lists are not filled in correctly.");
+      else for (const [tile, list] of Object.entries(own.tileAllow)) idList(list, `"${tile}" access`);
+    }
+    if ("profitEdit" in own) idList(own.profitEdit, "profit share edit");
+    if ("handbookExempt" in own) idList(own.handbookExempt, "handbook exempt");
+    if ("hrConsole" in own) {
+      if (!Array.isArray(own.hrConsole)) errors.push("The HR Console list is not a list.");
+      else own.hrConsole.forEach((row, i) => {
+        if (!isPlain(row)) { errors.push(`Person ${i + 1} on the HR Console list is not filled in correctly.`); return; }
+        if ("id" in row && row.id !== null && typeof row.id !== "string") {
+          errors.push(`Person ${i + 1} on the HR Console list has an id that is not a person's id.`);
+        }
+        /* ⚠️ `names` IS THE HALF THAT ANSWERS FOR A ROW WITH NO ID — see
+           hrInConsoleFor in hrRoster.js. A row with neither cannot ever match,
+           so it is a silent lockout that looks filled in. */
+        if ("names" in row) {
+          if (!Array.isArray(row.names)) errors.push(`Person ${i + 1} on the HR Console list has names that are not a list.`);
+          else row.names.forEach((n) => {
+            if (typeof n !== "string" || !n.trim()) errors.push(`Person ${i + 1} on the HR Console list has a blank name.`);
+          });
+        }
+      });
+    }
   }
 
   /* ── stations ────────────────────────────────────────────────────────── */

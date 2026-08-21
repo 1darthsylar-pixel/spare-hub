@@ -181,5 +181,75 @@ group("5. RATCHET — hand-rolled hero gradients may fall, never rise");
   t(`ToolHero is imported by statement somewhere (${adopters.length})`, adopters.length > 0);
 }
 
+
+/* ── the SHEET gradient, which is not the hero's ─────────────────────────────
+   ⛔⛔ IT SHIPPED INVISIBLE. `sheetGradient` reused `HERO_STEP`, which is 14
+   because it reproduces a hero Matt already approved across a band a couple of
+   hundred pixels tall. On a sheet that runs the whole page, +14 per channel is
+   about 5% lighter over a thousand pixels — below what an eye picks up.
+
+   ⇒ Measured by the owner, Aug 19 2026: "I still don't see the gradient." It
+   was rendering the entire time. It was just imperceptible, which is the same
+   as absent and harder to notice because nothing is broken.
+
+   ⚠️ THE HERO'S OWN STEP IS ASSERTED UNCHANGED. Fixing one page by relighting
+   every hero in the app is the trade that must not be made quietly. */
+{
+  group("the sheet gradient is a sheet, not a band");
+  const { SHEET_STEP, SHEET_SPAN, HERO_STEP, sheetGradient, lift } = await import("./heroColor.js");
+
+  t("★★ THE HERO STEP IS STILL 14, so every approved hero is untouched", HERO_STEP === 14);
+  t("★★ AND THE SHEET STEP IS BIGGER, because it covers a page rather than a band",
+    typeof SHEET_STEP === "number" && SHEET_STEP > HERO_STEP);
+
+  /* ⚠️ A THRESHOLD, NOT AN EXACT VALUE. The number can be tuned; what must not
+     come back is a step so small the gradient reads as a flat fill. 24 is the
+     floor below which it stopped being visible on a real screen. */
+  t(`★★★ THE SHEET STEP CLEARS THE VISIBILITY FLOOR — ${SHEET_STEP}`, SHEET_STEP >= 24);
+
+  const g = sheetGradient("#1D3557");
+  const stops = g.match(/#[0-9a-f]{6}/gi) || [];
+  t("★ it still produces two stops (control)", stops.length === 2, stops.join(" "));
+  t("★★ AND THE TWO STOPS ARE NOT THE SAME COLOUR", stops[0] !== stops[1]);
+
+  /* ⛔⛔⛔ THE ASSERTION THAT ANSWERS HIM THE SECOND TIME.
+     The step went 14 -> 34 and he STILL could not see it, because the ramp ran
+     `0%` to `100%` OF THE ELEMENT and the element is a page that scrolls for
+     thousands of pixels. A percentage ramp spreads the whole colour change over
+     the full height, so one screenful shows a sliver of it — and every section
+     added to the Report Card stretched it further and made it fainter.
+
+     ⇒ A PERCENTAGE STOP ON A PAGE-HEIGHT ELEMENT IS THE BUG, NOT THE NUMBER.
+     Absolute units finish the ramp at a fixed distance, so it completes inside
+     the first screen on every device and a longer page cannot dilute it. */
+  t("★★★ THE RAMP IS IN ABSOLUTE UNITS, NEVER PERCENTAGES. A page-height element stretches a percentage ramp until it disappears.",
+    !/\d+%/.test(g), g);
+  t(`★★★ AND IT FINISHES INSIDE ONE SCREEN — ${SHEET_SPAN}px`,
+    typeof SHEET_SPAN === "number" && SHEET_SPAN > 0 && SHEET_SPAN <= 900, String(SHEET_SPAN));
+  t("★★ the span is actually in the gradient it builds (control)",
+    g.includes(`${SHEET_SPAN}px`), g);
+
+  const chan = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const a = chan(stops[0]), b = chan(stops[1]);
+
+  /* ⚠️ LIT FIRST, SETTLING INTO THE BASE. Light falls from above, so the sheet
+     is lighter where it starts. Same direction BusinessScorecard's header
+     already uses — the one gradient in this app nobody has said they cannot
+     see. */
+  t(`★★★ THE LIT STOP COMES FIRST, so the sheet reads as lit from above — ${stops[0]} then ${stops[1]}`,
+    a.every((v, i) => v > b[i]));
+  t(`★★ AND THE TWO ARE GENUINELY FAR APART — ${a[0] - b[0]} per channel`,
+    a.every((v, i) => v - b[i] >= 24));
+
+  /* ⚠️ THE HUE HAS TO SURVIVE. A flat additive step moves every channel the
+     same distance by construction; scaling toward white would desaturate and
+     turn this navy grey, which is the mistake `lift`'s own header records. */
+  t("★★ EVERY CHANNEL MOVES THE SAME DISTANCE, so the hue holds",
+    new Set(a.map((v, i) => v - b[i])).size === 1);
+
+  t("★ and the hero's own lift is byte-for-byte what it always was",
+    lift("#1D3557") === "#2b4365", lift("#1D3557"));
+}
+
 console.log(`\n${fail ? `${fail} FAILED, ` : ""}${pass} passed`);
 process.exit(fail ? 1 : 0);

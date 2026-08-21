@@ -183,6 +183,70 @@ export function setList(stored, side, codes) {
   });
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   ⭐⭐ MOVE ONE PRIORITY UP OR DOWN. Matt, Aug 21 2026: "these training
+   priorities regressed. i had them arranged yesterday."
+
+   ⚠️⚠️ NOTHING HAD REGRESSED, AND THAT IS WHY THIS FUNCTION EXISTS. Read from
+   the store's own record: `updatedAt` was Aug 14 and `updatedBy` was his own
+   name, and the order on screen matched it name for name. No save had happened
+   since. **There was no way to reorder.** The screen offered paste, group and
+   split, so a leader who wanted to move row 9 above row 4 had to retype the
+   whole list — and anything short of that saved nothing at all.
+
+   ★ A SCREEN THAT SHOWS A NUMBERED LIST LOOKS REARRANGEABLE. That is the whole
+   bug: nothing was broken, nothing errored, and the work simply never landed.
+
+   ⛔⛔ IT MOVES INSIDE `rawSides`, NEVER INSIDE THE COLLAPSED VIEW, AND THAT IS
+   THE ONE THING THAT COULD LOSE DATA HERE.
+
+   `sides` is a DERIVED, collapsed list — one row per position family. Rebuilding
+   `rawSides` from it would drop every code that was folded away, which is
+   exactly the destructive collapse `readTraining`'s own note records: "un-merging
+   OT left the list at nine because the three OT rows no longer existed anywhere."
+
+   ⇒ So the raw list is grouped by `familyOf` — the SAME function the collapse
+   uses, never a second reading of the same question (rule 8) — the two adjacent
+   FAMILY BLOCKS are swapped whole, and the blocks are flattened back. Every raw
+   code survives, in its family's own internal order.
+
+   ⚠️ THE CODE PASSED IN IS A DISPLAY ROW, so it is a family leader. Any member
+   resolves to the same family, so a caller that hands over a folded member
+   moves the right block rather than nothing.
+   ⚠️ AT EITHER END IT RETURNS THE RECORD UNCHANGED rather than wrapping around.
+   A list that jumps from top to bottom under a mis-tap is worse than a button
+   that does nothing, and the screen greys the button anyway. */
+export function moveInList(stored, side, code, dir) {
+  const next = readTraining(stored);
+  if (!TRAINING_SIDES.includes(side)) return next;
+  const step = dir === "up" ? -1 : dir === "down" ? 1 : 0;
+  if (!step) return next;
+
+  const raw = Array.isArray(next.rawSides[side]) ? next.rawSides[side] : [];
+  const groups = next.merges[side] || [];
+  const want = familyOf(code, groups);
+  if (!want) return next;
+
+  /* Family blocks in first-appearance order — the same order the collapsed
+     view is built in, so a row's position on screen IS its block's index. */
+  const order = [];
+  const blocks = new Map();
+  for (const c of raw) {
+    const fam = familyOf(c, groups);
+    if (!fam) continue;
+    if (!blocks.has(fam)) { blocks.set(fam, []); order.push(fam); }
+    blocks.get(fam).push(c);
+  }
+
+  const at = order.indexOf(want);
+  const to = at + step;
+  if (at < 0 || to < 0 || to >= order.length) return next;
+  order[at] = order[to];
+  order[to] = want;
+
+  return setList(next, side, order.flatMap((fam) => blocks.get(fam)));
+}
+
 /* Paste a list straight out of the spreadsheet it lives in today.
    Every shape that sheet and its exports produce:
        "1,Drinks"      a CSV row, which is what Sheets copies
@@ -418,9 +482,9 @@ export function priorityRank(stored, side, code) {
    array, or nothing. ⚠️ NOTHING MEANS NOTHING HELD, not "everything" — the
    caller has to be able to hand over an empty history without it reading as a
    fully trained person. */
-function asHeld(held) {
+function asHeld(held, groups) {
   const src = held instanceof Set ? [...held] : (Array.isArray(held) ? held : []);
-  return new Set(src.map(positionFamily).filter(Boolean));
+  return new Set(src.map((c) => familyOf(c, groups)).filter(Boolean));
 }
 
 /* Every code somebody is certified on, however weakly. The CERTIFICATION source.
@@ -440,14 +504,36 @@ export function heldCodes(rec) {
    badges most of the board most of the day, and a badge that is always on is a
    badge nobody reads. How much of their time they have spent somewhere still
    steers WHO gets picked; it just does not decide what the word means. */
-export function isTrainingPlacement(held, code) {
+export function isTrainingPlacement(held, code, groups) {
   /* ⚠️ BY POSITION FAMILY. Somebody certified on one numbered spot of a station
      is not learning anything by standing at the next one along, and badging
      that as training would put an L on most of the front board every day.
      `asHeld` families what they hold, this families where they are standing. */
-  const key = positionFamily(code);
+  /* 🐛🐛 THE STORE'S OWN MERGES WERE IGNORED HERE, AND THIS IS THE ONE PLACE
+     THEY MATTER MOST. `readMerges` exists precisely because the trailing-number
+     guess gets some boards wrong — see its header for the worked example. A
+     store types the groups on the Training tab, and then the function deciding
+     whether a placement IS training asked the guess anyway. So somebody already
+     rated on one row of a declared pair still badged as learning the other, on
+     a printed board, for ever.
+
+     ⚠️ NO STATION NAMES IN THIS FILE. A test asserts that every function here
+     is free of them, because they are one store's data and this code ships to
+     all of them (rule 18). The example lives in the merge header, where it is
+     phrased against no particular board.
+
+     ⇒ `familyOf` composes both rules already — an explicit group first, then
+     the trailing-number family, then the code itself. Asking it on BOTH sides
+     is the whole fix: what they hold and where they are standing have to be
+     familied the same way or the comparison is meaningless. That is why
+     `asHeld` takes the groups too.
+
+     ⚠️ `groups` IS OPTIONAL AND ABSENT IS THE OLD BEHAVIOUR, BYTE FOR BYTE.
+     `familyOf(code, undefined)` falls straight through to `positionFamily`,
+     so every existing caller is unaffected (rule 1). */
+  const key = familyOf(code, groups);
   if (!key) return false;
-  return !asHeld(held).has(key);
+  return !asHeld(held, groups).has(key);
 }
 
 /* The positions this person should learn next, best first.
@@ -455,9 +541,16 @@ export function isTrainingPlacement(held, code) {
    do, in the store's own order. Empty when the store has typed no list, when
    they already do everything on it, or when the record is unreadable. */
 export function trainingGaps(held, side, stored) {
-  const list = readTraining(stored).sides[side] || [];
-  const have = asHeld(held);
-  return list.filter((code) => !have.has(positionFamily(code)));
+  /* 🐛 THE SAME MERGE BUG THAT LIVED IN `isTrainingPlacement`, one function
+     down. This read the store's own groups to COLLAPSE the list and then
+     compared against the trailing-number guess, so a person already rated on
+     one half of a declared pair was still told to go and learn the other half.
+     ⇒ One record, one set of groups, `familyOf` on both sides. */
+  const rec = readTraining(stored);
+  const list = rec.sides[side] || [];
+  const groups = rec.merges[side];
+  const have = asHeld(held, groups);
+  return list.filter((code) => !have.has(familyOf(code, groups)));
 }
 
 /* The single next one, or "" when there is nothing to train them on. A
