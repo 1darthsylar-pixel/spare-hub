@@ -84,7 +84,28 @@ const api = async (path, body, method = "POST") => {
   return r.json().catch(() => null);
 };
 
-export default function Announcements({ user }) {
+/* The head of a read list: the count, always visible, and a tap to show the
+   names. ⚠️ MODULE LEVEL (design rule 7) — a helper declared inside the
+   component can be read in its temporal dead zone by anything that runs during
+   render, and this file already renders it inside a map.
+   ⚠️ A ZERO STILL DRAWS ITS HEAD, so "Everyone has" has something to sit under
+   and the two columns stay the same height. It is not a button when there is
+   nothing to open: a control that does nothing is worse than no control. */
+function ReadHead({ label, tone, n, on, onClick }) {
+  const head = (
+    <span style={{ fontSize: 11.5, fontWeight: 800, color: tone }}>
+      {label} · {n}{n > 0 ? (on ? " ▾" : " ▸") : ""}
+    </span>
+  );
+  if (!n) return <div>{head}</div>;
+  return (
+    <button onClick={onClick} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+      {head}
+    </button>
+  );
+}
+
+export default function Announcements({ user, openRowId }) {
   const [rows, setRows] = useState([]);
   const [isLeader, setIsLeader] = useState(false);
   const [uid, setUid] = useState("");
@@ -93,21 +114,62 @@ export default function Announcements({ user }) {
   const [err, setErr] = useState("");
   const [openId, setOpenId] = useState("");
   const [busy, setBusy] = useState("");
+  /* ⭐ WHICH READ LISTS ARE OPEN. Matt, Aug 21 2026, looking at 92 names in a
+     column: "in announcements this needs to be collapsible."
+
+     ⚠️⚠️ THIS REVERSES A DELIBERATE DECISION AND THE OLD REASON IS KEPT BELOW SO
+     NOBODY QUIETLY REVERSES IT BACK. The comment at the read list said the
+     not-opened column "is the one with the value in it, so it is not hidden
+     behind anything." That was right about WHERE THE VALUE IS and wrong about
+     what it costs: at this store the list is 92 names, so every announcement
+     card grew a wall that the next card had to be scrolled past.
+     ⇒ THE COUNT IS THE VALUE AND IT STAYS VISIBLE ALWAYS. Only the NAMES fold,
+     and both columns fold the same way so neither reads as the important one.
+     Same rule the Report Card already follows: the shut page is the report.
+     ⚠️ Keyed by announcement AND column, so opening the not-opened list on one
+     card does not open it on forty. */
+  const [readOpen, setReadOpen] = useState(() => new Set());
+  const toggleRead = (k) => setReadOpen((prev) => {
+    const next = new Set(prev);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    return next;
+  });
 
   /* compose */
   const [title, setTitle] = useState("");
   const [bodyText, setBodyText] = useState("");
   const [kind, setKind] = useState("everyone");
   const [role, setRole] = useState("");
-  const [needAck, setNeedAck] = useState(false);
+  /* ⚠️ CONFIRMATION IS ON BY DEFAULT. Matt, Aug 14 2026: "Require read for all
+     important announcements."
+
+     The Hub cannot know which announcement is important, so the choice is
+     which way round the poster has to think. Off by default means every
+     important one depends on somebody remembering to tick a box, and the ones
+     that get forgotten are the ones sent in a hurry — which are exactly the
+     ones that matter. On by default means the only thing anybody has to
+     remember is to UNtick it for something trivial, and forgetting that costs
+     one unnecessary tap for the reader instead of an unread policy change.
+
+     Same reasoning as the rest of this repo: build the guard, do not rely on
+     remembering. */
+  const [needAck, setNeedAck] = useState(true);
   const [sig, setSig] = useState("");
 
-  const load = async () => {
-    const d = await api("/api/announcements-mine", null, "GET");
+  /* ⚠️ THE SERVER STILL DECIDES WHAT ARRIVES — see the note at the top of this
+     file. This flag asks it a different question; it never hides a row that
+     arrived. `hidden` is the server's count of what it left out, so the offer
+     to see the full record is only drawn when there IS one. */
+  const [showReplaced, setShowReplaced] = useState(false);
+  const [hidden, setHidden] = useState(0);
+
+  const load = async (all = showReplaced) => {
+    const d = await api(`/api/announcements-mine${all ? "?all=1" : ""}`, null, "GET");
     if (!d || !d.ok) { setErr("Could not load announcements just now."); setLoading(false); return; }
     setRows(Array.isArray(d.announcements) ? d.announcements : []);
     setIsLeader(!!d.isLeader);
     setUid(String(d.uid || ""));
+    setHidden(Number(d.hidden) || 0);
     setErr("");
     setLoading(false);
   };
@@ -119,6 +181,34 @@ export default function Announcements({ user }) {
       if (alive && t && Array.isArray(t.team)) setPeople(t.team);
     } catch { /* names fall back to ids */ }
   })(); return () => { alive = false; }; }, []);
+
+  /* ⭐ THE NOTIFICATION FINISHES ITS SENTENCE. Matt, Aug 20 2026: "When viewing
+     an announcement you should see the whole thing here." The push carries the
+     whole announcement now and lands on `?to=announce&open=<id>`, which App.jsx
+     hands down as `openRowId`. This expands that row, and `openRow` marks it
+     opened through the same route a tap on the list uses.
+
+     ⚠️⚠️ IT EXPANDS AND MARKS OPENED. IT DOES NOT SIGN. Confirming stores a
+     TYPED signature against ACK_STATEMENT, and the comment at that constant
+     says why: the words agreed to are kept beside the signature so a receipt
+     reads years later. A lock-screen tap is "I dismissed a banner", and
+     recording it as a signature would empty the only field on the record that
+     means anything. What this removes is the HUNTING — the Confirm box is on
+     screen with nothing to find.
+
+     ⚠️ AFTER `rows` ARRIVE, NEVER ON MOUNT. openRow needs the announcement to
+     mark it opened, and on mount there are none — it would have set the id and
+     silently skipped the open, so the row would look read-but-unrecorded.
+     ⚠️ ONCE. `done` stops a later reload from re-expanding a row somebody has
+     deliberately closed. */
+  const [deepDone, setDeepDone] = useState(false);
+  useEffect(() => {
+    if (deepDone || !openRowId || !rows.length) return;
+    const hit = rows.find((a) => String(a.id) === String(openRowId));
+    setDeepDone(true);
+    if (hit) openRow(hit);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openRowId, rows, deepDone]);
 
   /* One name lookup, handed to the leaf. The leaf has no roster and must not
      grow one — it is handed a function and returns rows. */
@@ -181,7 +271,12 @@ export default function Announcements({ user }) {
     });
     setBusy("");
     if (!d || !d.ok) { setErr(d && d.error ? String(d.error) : "That did not send, and nothing was posted."); return; }
-    setTitle(""); setBodyText(""); setNeedAck(false); setErr("");
+    /* ⚠️ RESET TO THE DEFAULT, WHICH IS NOW true, NOT TO false. This line is
+       the whole change's second half and it is easy to miss: leaving it at
+       false would put confirmation on for the first announcement of a session
+       and quietly off for every one after it, which is worse than either
+       setting because nobody would ever notice the pattern. */
+    setTitle(""); setBodyText(""); setNeedAck(true); setErr("");
     await load();
   };
 
@@ -293,8 +388,24 @@ export default function Announcements({ user }) {
       )}
 
       <div style={box}>
-        <div style={{ fontWeight: 800, fontSize: 15, color: C.ink }}>
-          {isLeader ? "All announcements" : "For you"}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ fontWeight: 800, fontSize: 15, color: C.ink }}>
+            {isLeader ? "All announcements" : "For you"}
+          </div>
+          {/* ⚠️ IT NAMES THE NUMBER. "Show replaced" alone reads as a setting;
+              "3 older versions hidden" is a fact somebody can decide about. */}
+          {(hidden > 0 || showReplaced) && (
+            <button
+              type="button"
+              onClick={() => { const v = !showReplaced; setShowReplaced(v); load(v); }}
+              style={{
+                border: "none", background: "none", padding: 0, cursor: "pointer",
+                fontSize: 12.5, fontWeight: 700, color: C.sub, textDecoration: "underline",
+              }}
+            >
+              {showReplaced ? "Hide replaced" : `Show ${hidden} replaced`}
+            </button>
+          )}
         </div>
         {rows.length === 0 && (
           <div style={{ fontSize: 13, color: C.sub, marginTop: 6 }}>Nothing yet.</div>
@@ -365,9 +476,10 @@ export default function Announcements({ user }) {
                       </div>
                       <div style={{ display: "flex", gap: 14, marginTop: 6, flexWrap: "wrap" }}>
                         <div style={{ flex: "1 1 200px" }}>
-                          <div style={{ fontSize: 11.5, fontWeight: 800, color: GREEN }}>Opened</div>
+                          <ReadHead label="Opened" tone={GREEN} n={list.opened.length}
+                            on={readOpen.has(`${a.id}:o`)} onClick={() => toggleRead(`${a.id}:o`)} />
                           {list.opened.length === 0 && <div style={{ fontSize: 12, color: C.sub }}>Nobody yet</div>}
-                          {list.opened.map((p) => (
+                          {readOpen.has(`${a.id}:o`) && list.opened.map((p) => (
                             <div key={p.id} style={{ fontSize: 12, color: C.ink }}>
                               {p.name} <span style={{ color: C.sub }}>{whenText(p.openedAt)}</span>
                               {p.ackedAt && <span style={{ color: GREEN, fontWeight: 700 }}> ✓</span>}
@@ -375,9 +487,10 @@ export default function Announcements({ user }) {
                           ))}
                         </div>
                         <div style={{ flex: "1 1 200px" }}>
-                          <div style={{ fontSize: 11.5, fontWeight: 800, color: RED }}>Not opened</div>
+                          <ReadHead label="Not opened" tone={RED} n={list.notOpened.length}
+                            on={readOpen.has(`${a.id}:n`)} onClick={() => toggleRead(`${a.id}:n`)} />
                           {list.notOpened.length === 0 && <div style={{ fontSize: 12, color: C.sub }}>Everyone has</div>}
-                          {list.notOpened.map((p) => (
+                          {readOpen.has(`${a.id}:n`) && list.notOpened.map((p) => (
                             <div key={p.id} style={{ fontSize: 12, color: C.ink }}>{p.name}</div>
                           ))}
                         </div>

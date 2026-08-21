@@ -831,8 +831,19 @@ export default function EquipmentLog({ tier }) {
           {effectiveCategories.map(cat => {
             const catChecked = cat.items.filter(i => checks[i.id]).length;
             const allDone = cat.items.length > 0 && catChecked === cat.items.length;
+            /* 🐛 THE THREE CARDS BELOW CARRIED `boxShadow` TWICE, and the older
+               flat `0 1px 4px` sat AFTER `CARD_3D` in the same object, so the
+               later key won and the shared raised look never rendered here. It
+               parsed, it resolved, all six checks were clean, and Vite whispered
+               about it on every boot.
+               ⚠️ RESOLVED TOWARD THE SHARED TOKEN, unlike the toggle card in
+               BusinessScorecard.jsx. These are plain containers with no selected
+               state, so the flat value was a leftover the cardStyle sweep failed
+               to remove rather than something meaning anything. Three cards now
+               look like every other card in the Hub, which is what the sweep was
+               for. Graded by dupKeys.test.mjs. */
             return (
-              <div key={cat.id} style={{ marginBottom: 14, background: cardSurface(), borderRadius: 12, ...accentEdge(ACCENT_NEUTRAL, 3), boxShadow: CARD_3D, overflow: "hidden", border: "1px solid #D1D5DB", boxShadow: "0 1px 4px rgba(0,0,0,0.07)" }}>
+              <div key={cat.id} style={{ marginBottom: 14, background: cardSurface(), borderRadius: 12, ...accentEdge(ACCENT_NEUTRAL, 3), boxShadow: CARD_3D, overflow: "hidden", border: "1px solid #D1D5DB" }}>
                 <div style={{ background: cat.color + "14", borderBottom: `2px solid ${cat.color}`, padding: "10px 16px", display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ fontSize: 18 }}>{cat.emoji}</span>
                   <span style={{ fontWeight: 700, fontSize: 13, color: cat.color, letterSpacing: "0.06em", textTransform: "uppercase" }}>{cat.name}</span>
@@ -930,7 +941,7 @@ export default function EquipmentLog({ tier }) {
             );
           })}
 
-          <div style={{ background: cardSurface(), borderRadius: 12, ...accentEdge(ACCENT_NEUTRAL, 3), boxShadow: CARD_3D, border: "1px solid #D1D5DB", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "14px 16px" }}>
+          <div style={{ background: cardSurface(), borderRadius: 12, ...accentEdge(ACCENT_NEUTRAL, 3), boxShadow: CARD_3D, border: "1px solid #D1D5DB", padding: "14px 16px" }}>
             <div style={labelStyle}>General Shift Notes</div>
             <textarea placeholder="Additional observations, escalations, or follow-up items…" rows={3}
               value={genNotes} onChange={e => setGenNotes(e.target.value)}
@@ -940,7 +951,7 @@ export default function EquipmentLog({ tier }) {
 
           {/* RECENT SUBMITTED LOGS (shared across team) */}
           {recent.length > 0 && (
-            <div style={{ marginTop: 14, background: cardSurface(), borderRadius: 12, boxShadow: CARD_3D, border: "1px solid #D1D5DB", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "14px 16px" }}>
+            <div style={{ marginTop: 14, background: cardSurface(), borderRadius: 12, boxShadow: CARD_3D, border: "1px solid #D1D5DB", padding: "14px 16px" }}>
               <div style={labelStyle}>Recent Submitted Logs</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {recentSorted.map((r, i) => {

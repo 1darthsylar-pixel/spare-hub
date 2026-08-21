@@ -119,6 +119,10 @@ const ScheduleConsole = lazy(() => import("./ScheduleConsole.jsx"));
    setting could arrive. Tool entries name their list with `allowIdsFrom` now
    and toolAllowsId resolves it at use time. */
 import { tileAllowIds, STORE, storeCfg, programLabel, tokenLabel } from "./storeConfig.js";
+/* The store's saved settings. Same loader main.jsx runs at boot, imported here
+   rather than copied so there is one fetch-and-merge in the app (design rule 8)
+   — and it lives in its own file because main.jsx imports THIS one. */
+import { loadStoreConfig } from "./storeConfigLoad.js";
 import { onSigned } from "./signedTick.js";
 import { loadItemGaps, priorMonthGaps } from "./foodItemGaps.js";
 import { eosPeriod } from "./eosPeriod.js";
@@ -2044,6 +2048,12 @@ export default function App() {
   // Dashboard daypart breakdown, collapsed by default — see the Labor card.
   const [dashDayparts, setDashDayparts] = useState(false);
   const [pinTool, setPinTool] = useState(null); // tool awaiting PIN
+  /* ★ BUMPED WHEN A STORE'S SAVED SETTINGS ARRIVE AFTER SIGN-IN, and read by
+     nothing. Its only job is to make React render again: `applyStoreOverrides`
+     merges into module state that React cannot see, so without this the config
+     would be correct and the screen would still be showing the defaults. See
+     `grant` below and storeConfigLoad.js. */
+  const [cfgTick, setCfgTick] = useState(0);
   const [pin, setPin] = useState("");
   const [pinErr, setPinErr] = useState("");
   const [rememberDevice, setRememberDevice] = useState(false); // "keep me signed in on this device" — OFF by default so shared iPads stay at 12h
@@ -3360,6 +3370,28 @@ export default function App() {
        lands on the dashboard, which is the whole point of the button. */
     setActiveTool(isSignIn(pinTool) ? null : pinTool);
     setPinTool(null);
+    /* ★★ THE STORE'S OWN SETTINGS, IF THE BOOT CALL NEVER GOT THEM.
+       🐛 Opening the Hub with a lapsed session made main.jsx's loader bail on
+       the missing token, and nothing ever tried again — so the whole session
+       ran on the ORIGIN STORE'S code defaults. Signing in is exactly the moment
+       a token starts existing, so it is the moment to ask again.
+
+       ⚠️ NOT AWAITED, ON PURPOSE. Nobody waits after typing a PIN. Access is
+       granted on the lines above and the settings catch up a moment later;
+       making this block the grant would put a network round trip between a
+       leader and the board they just unlocked, which is the trade main.jsx
+       already refused at boot.
+
+       ⚠️ IT COSTS NOTHING IN THE NORMAL CASE. `loadStoreConfig` returns
+       immediately once a boot apply has succeeded, so this only does real work
+       in the case that was broken.
+
+       ⚠️ THE TICK IS THE POINT. `applyStoreOverrides` merges into module state
+       React cannot see, so without a state change the config would be right and
+       the screen would still show the defaults — which is the bug, one step
+       later. Only a REAL apply resolves true, so a failed fetch renders
+       nothing extra. */
+    loadStoreConfig().then((didApply) => { if (didApply) setCfgTick((n) => n + 1); });
   };
 
   const submitPin = async () => {

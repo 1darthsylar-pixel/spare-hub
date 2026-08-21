@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import { importCard, importZone, importOpenBtn } from "./cardStyle.js";
+import { readImportFile, IMPORT_ACCEPT, IMPORT_HINT } from "./importFile.js";
 import { detectColumns, parseCatalog, planImport } from "./catalogImport.js";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -56,65 +57,12 @@ const box = {
   list: { fontSize: 11.5, color: "#6B7280", marginTop: 5, lineHeight: 1.5, maxHeight: 108, overflowY: "auto" },
 };
 
-/* ── DROP A DOWNLOADED FILE, NOT JUST A PASTE ──────────────────────────────
-   Matt, Aug 10 2026: "for a new store we have to assume they don't use Claude,
-   so the paste boxes need to accept the downloaded PDF or files from wherever
-   they are getting them."
-
-   ⚠️ TEXT FORMATS ONLY, AND IT SAYS SO OUT LOUD WHEN IT CANNOT READ ONE.
-   A .csv or .tsv is just text — `File.text()` hands it straight to the same
-   parser a paste goes through, so this needs NO dependency and nothing new to
-   maintain. A .pdf or .xlsx is a binary container and needs a real library to
-   read (pdfjs, sheetjs). This repo is under a DEPENDENCY FREEZE as of Aug 4
-   2026 (the Shai-Hulud npm worm; see CLAUDE.md), and that notice says to ask
-   Matt before it comes off. So those two are refused with a plain sentence
-   that tells the person exactly what to do instead.
-   ⚠️ REFUSING LOUDLY IS THE POINT. Reading a PDF's bytes as text produces
-   pages of mojibake that `detectColumns` would happily chew on and turn into
-   junk rows. A silent bad import is far worse than "I cannot read this one." */
-const TEXT_EXT = /\.(csv|tsv|txt|tab)$/i;
-const PDF_EXT = /\.pdf$/i;
-const SHEET_EXT = /\.(xlsx|xls|numbers)$/i;
-const DOC_EXT = /\.(pages|docx?)$/i;
-
-async function readDroppedFile(file) {
-  if (!file) return { ok: false, msg: "" };
-  const name = String(file.name || "");
-
-  /* ⚠️ PDF IS READ FOR REAL NOW (freeze lifted Aug 10 2026, pdfjs added).
-     It is loaded ON DEMAND from pdfText.js — see the note there about why
-     it must never be a static import. */
-  if (PDF_EXT.test(name) || file.type === "application/pdf") {
-    const { pdfToText } = await import("./pdfText.js");
-    return pdfToText(file);
-  }
-
-  /* ⚠️ EXCEL IS STILL REFUSED, AND ON PURPOSE. .xlsx is a zip of XML and
-     needs its own library. Reading its bytes as text produces binary noise
-     that `detectColumns` would chew into junk rows and Apply would WRITE.
-     A silent bad import is far worse than an honest no, so this names the
-     format and says exactly what to do instead. */
-  if (SHEET_EXT.test(name)) {
-    return {
-      ok: false,
-      msg: "I cannot read an Excel file. In Excel choose File, then Save As, " +
-           "then CSV — and drop that. Or select the rows and paste them in.",
-    };
-  }
-  if (DOC_EXT.test(name)) {
-    return { ok: false, msg: "I cannot read a Word or Pages file. Select the rows in it and paste them in." };
-  }
-
-  if (!TEXT_EXT.test(name) && file.type && !/^text\//.test(file.type)) {
-    return { ok: false, msg: "That file is not a CSV, a PDF or a text file. Try the CSV version, or paste the rows in." };
-  }
-  try {
-    const t = await file.text();
-    return t && t.trim() ? { ok: true, text: t } : { ok: false, msg: "That file came through empty." };
-  } catch (e) {
-    return { ok: false, msg: "That file would not open. Try pasting the rows in instead." };
-  }
-}
+/* ⚠️ THE FILE READER MOVED OUT, Aug 15 2026. It lived here as a private
+   `readDroppedFile` and only this one screen could reach it, while five other
+   paste boxes had no file button at all. It is now `readImportFile` in
+   importFile.js, shared by every import box, and it reads Excel — which the
+   copy that used to sit here refused, on a dependency-freeze reason that
+   expired on Aug 10. See importFile.js. */
 
 export default function CatalogImportBox({
   current, spec, want, allowedCats, canUpdate = true, updateNote = "", onApply, title, hint, steps,
@@ -142,7 +90,7 @@ export default function CatalogImportBox({
   const takeFile = (f) => {
     if (!f) return;
     setErr(""); setNote(""); setReading(true);
-    readDroppedFile(f).then((r) => {
+    readImportFile(f).then((r) => {
       setReading(false);
       if (r.ok) { onPaste(r.text); if (r.note) setNote(r.note); }
       else setErr(r.msg);
@@ -278,12 +226,12 @@ export default function CatalogImportBox({
           Choose a file
         </button>
         <span style={{ fontSize: 12.5, color: "#6B7280" }}>
-          or drag one onto the box. CSV and text files. Not PDF or Excel yet.
+          {IMPORT_HINT}
         </span>
         <input
           ref={fileRef}
           type="file"
-          accept=".csv,.tsv,.txt,.tab,.pdf,text/csv,text/plain,application/pdf"
+          accept={IMPORT_ACCEPT}
           style={{ display: "none" }}
           onChange={(ev) => {
             const f = ev.target.files && ev.target.files[0] ? ev.target.files[0] : null;

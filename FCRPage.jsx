@@ -42,6 +42,7 @@ import MonthYearPicker from "./MonthYearPicker.jsx";
 import { parseFcrPaste } from "./fcrImport.js";
 import PasteMonth from "./PasteMonth.jsx";
 import { eosPeriod } from "./eosPeriod.js";
+import { buildLiveProjection as fcrBuildLiveProjection } from "./fcrMath.js";
 
 const TEAL = "#0F766E";
 const RED = "#DD0031";
@@ -186,6 +187,29 @@ function loadFcrData() {
 
 // ── Helpers ────────────────────────────────────────────────────────
 const money = (n) => (Number(n) || 0).toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/* An absent figure as "—", never as "$0.00" and never as a crash.
+   ⚠️ `money()` ABOVE IS NOT A SUBSTITUTE. It coerces with `Number(n) || 0`, so a
+   missing number prints $0.00 — an absent figure dressed up as a real one that
+   happens to read zero. For a WAGE that is actively misleading.
+   🐛 THIS CRASH WAS FOUND AT THE VILLAGE ON Aug 12 2026, FIXED THERE, AND NEVER
+   CAME HOME. `$${avgWage.toFixed(2)}/hr` throws "Cannot read properties of
+   undefined (reading 'toFixed')" whenever `m.avgWage` is missing: `avgWage`
+   falls back to `m.avgWage`, `m` is `EMPTY_MONTH.mtd`, and `EMPTY_MONTH.mtd` is
+   `{}`. EMPTY_MONTH's own comment says it covers "one frame" before the data
+   lands, and while this store had a projection for every month that was true.
+   ⚠️⚠️ IT IS REACHABLE HERE NOW, AND THE CALENDAR IS WHAT MADE IT REACHABLE.
+   `fcrProjectionData.js` runs 2025-02 to 2026-07. There is no row for the month
+   we are standing in, so `d` IS EmptyMonth and every bare read off `m` is
+   undefined — not briefly, permanently. Driven in a browser Aug 18 2026 on this
+   store's own code: four page errors off `harness/nosidescroll.mjs`.
+   ⇒ A month rolling over is not an edge case. It happens twelve times a year.
+   ⚠️ IT COERCES BEFORE IT TESTS, ON PURPOSE. Projection records written months
+   ago may carry these as numeric STRINGS, and `Number.isFinite("16.42")` is
+   false — a bare isFinite check would hide a figure that is genuinely there
+   (design rule 1: old records must still read). */
+const absent = (v) => v === null || v === undefined || v === "" || !Number.isFinite(Number(v));
+const perHour = (v, suffix = "") => (absent(v) ? "—" : `$${Number(v).toFixed(2)}${suffix}`);
 // Thousands-grouped for showing a number back in an input while it is NOT being
 // edited (empty stays empty, a non-number is left as typed). The STORED value is
 // always the raw digits — this only changes what the field displays.
@@ -260,6 +284,17 @@ const curYm = () => { const n = new Date(); return `${n.getFullYear()}-${pad2(n.
    UTC, and after 8 PM Eastern it names tomorrow, which is the known wrong-date
    bug class in this repo. en-CA formats as YYYY-MM-DD. */
 const yesterdayISO = () => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toLocaleDateString("en-CA"); };
+/* ⚠️ `en-CA` GIVES YYYY-MM-DD IN LOCAL TIME. toISOString() would be UTC and
+   would stamp the wrong day for anything typed in the evening here. */
+const todayISO = () => new Date().toLocaleDateString("en-CA");
+/* ⚠️ MODULE LEVEL AND PURE (rule 7), and it never constructs a Date from the
+   bare ISO string — `new Date("2026-08-19")` is parsed as UTC and prints the
+   day before for anyone west of Greenwich. Splitting the string cannot be
+   wrong. An unparseable stamp prints nothing rather than "Invalid Date". */
+const ptoWhen = (iso) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ""));
+  return m ? `${Number(m[2])}/${Number(m[3])}` : "";
+};
 const mtdKey = (ym) => `gcfcr-fcr-mtd-${ym}-v1`;
 const actualKey = (ym) => `gcfcr-fcr-actual-${ym}-v1`;
 const shiftYm = (ym, delta) => {
@@ -356,6 +391,21 @@ const prettyDate = (iso) => {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
+/* Whole days from `a` to `b`, both ends counted, as a person counts a pay
+   period. Aug 1 to Aug 16 is 16 days, not 15.
+   ⚠️ MIDDAY, NOT MIDNIGHT. Two dates built at local midnight are 23 or 25
+   hours apart across a DST boundary, which rounds to the wrong day exactly
+   twice a year — and the fortnight either side of the change is when a labor
+   window is most likely to be wrong anyway. `heldDaysSince` in App.jsx carries
+   the same fix for the same reason. */
+const daysCovered = (a, b) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(a || "") || !/^\d{4}-\d{2}-\d{2}$/.test(b || "")) return null;
+  const [ay, am, ad] = a.split("-").map(Number);
+  const [by, bm, bd] = b.split("-").map(Number);
+  const n = Math.round((new Date(by, bm - 1, bd, 12) - new Date(ay, am - 1, ad, 12)) / 86400000) + 1;
+  return n > 0 ? n : null;
+};
+
 const prettyMonth = (ym) => {
   if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return "—";
   const [y, m] = ym.split("-").map(Number);
@@ -364,104 +414,59 @@ const prettyMonth = (ym) => {
 // Months elapsed in the (calendar) fiscal year through `throughYm`.
 const ytdMonthCount = (ym) => Math.max(Number((ym || "").split("-")[1]) || 0, 1);
 
+/* ★★ HOW FAR BEHIND THE YTD COLUMN IS — Matt, Aug 17 2026: "fcr still isnt
+   accurate and nick looks every morning."
+
+   ⚠️⚠️ THE CARRIED LINES ARE THE MAJORITY OF THE PAGE. Only Food, Paper, Wages
+   and Wage Taxes are live. Every other line — around twenty of them, R&M, rent,
+   utilities, supplies, the lot — is `YTD % × Est Sales`, and those percentages
+   come from whatever FCR was last typed into the YTD table.
+
+   ⛔ NOTHING EVER CHECKED THAT DATE. `throughYm` has been stored since the table
+   was built and it is rendered in exactly two places, both inside the YTD editor
+   far down the page. The headline number at the top — the one somebody opens
+   this page to read — was computed from it and said nothing. So a YTD column
+   that stopped being updated produces a Projected Net Profit that is confidently
+   wrong and looks completely normal, every morning, indefinitely.
+
+   ⇒ Counts CLOSED months only. August is open, so in August the newest FCR that
+   can exist is July's. Being "behind" by the current month is not late.
+   ⚠️ RETURNS 0 WHEN IT CANNOT TELL. A blank or malformed `throughYm` is a store
+   that has not filled the table in yet, and shouting at a new store about a
+   column they have never seen is the wrong alarm. */
+const ytdMonthsBehind = (throughYm, nowYm) => {
+  const parse = (v) => {
+    const m = /^(\d{4})-(\d{2})$/.exec(String(v || "").trim());
+    if (!m) return null;
+    const mm = Number(m[2]);
+    if (!(mm >= 1 && mm <= 12)) return null;
+    return Number(m[1]) * 12 + mm;
+  };
+  const had = parse(throughYm), now = parse(nowYm);
+  if (had == null || now == null) return 0;
+  /* The last month that has actually closed. */
+  const lastClosed = now - 1;
+  return Math.max(0, lastClosed - had);
+};
+
 // ── Live projection engine ──────────────────────────────────────────
 // ytd: { [label]: fraction } — YTD % per line, used for every non-live,
 // non-fixed line. Falls back to the month template % when a line has no YTD.
+/* ⚠️ THE MATHS MOVED TO fcrMath.js AND THIS IS THE ONLY THING LEFT OF IT.
+
+   It lived here, inside a component nothing in Node can load, so the projection
+   every money screen reads from could not be tested at all. The arithmetic is
+   byte-identical over there; the two `storeCfg` reads it used to make are now
+   passed in, because reading browser state is exactly what made it unreachable.
+
+   ⚠️ THE STORE'S ANSWER IS STILL THE STORE'S. `fixedDollar()` and `feeShare()`
+   are read HERE, at the call site that already has them, and handed over. No
+   caller of this function changed and no behaviour moved. */
 function buildLiveProjection(d, estSales, foodPct, paperPct, laborPct, ytd) {
-  /* 🐛🐛 THIS CRASHED THE WHOLE FINANCIALS TILE FOR NICK, Aug 8 2026:
-     "undefined is not an object (evaluating 'A.items')".
-
-     When the projection data moved to a fetch earlier today, EMPTY_MONTH gave
-     `d` a groups ARRAY so nothing would throw. That was not enough: this
-     function does not just read groups, it ASSUMES a "Prime Costs" group is in
-     there. With an empty array find() returns undefined and .items throws — and
-     it throws HERE, above the loading gate, so the gate never got the chance to
-     render and the tile went to its crash boundary instead.
-
-     ⚠️ THE LESSON, WRITTEN DOWN: an empty-shape fallback has to satisfy every
-     LOOKUP the render does, not merely every top-level key. groups: [] is a
-     valid array and still a broken template.
-     ⚠️ RETURNS A USABLE EMPTY PROJECTION rather than null, because every caller
-     reads .groups and .totals off this without checking. */
-  const primeGroup = (d && Array.isArray(d.groups) ? d.groups : []).find((g) => g && g.name === "Prime Costs");
-  const primeItems = (primeGroup && Array.isArray(primeGroup.items)) ? primeGroup.items : null;
-  if (!primeItems) {
-    return {
-      groups: [], liveLabels: new Set(), ytdLabels: new Set(),
-      totals: {
-        totalExpenses: [0, 0],
-        operatingProfit: [0, 0],
-        baseProfit: [0, 0],
-        baseOperatingFee: [0, 0],
-        netProfit: [0, 0],
-      },
-    };
-  }
-  const staticWages = primeItems.find(([label]) => label === "Wages") || ["Wages", 0, 0];
-  const staticTax = primeItems.find(([label]) => label === "Wage Taxes") || ["Wage Taxes", 0, 0];
-  const wageTaxRate = staticWages[1] > 0 ? staticTax[1] / staticWages[1] : 0;
-
-  const wagesDollars = laborPct != null ? laborPct * estSales : null;
-  const foodDollars = foodPct != null ? foodPct * estSales : null;
-  const paperDollars = paperPct != null ? paperPct * estSales : null;
-  const wageTaxDollars = wagesDollars != null ? wagesDollars * wageTaxRate : null;
-
-  const ytdPct = (label) => {
-    const v = ytd ? ytd[label] : null;
-    return v != null && isFinite(v) ? v : null;
-  };
-
-  const liveLabels = new Set();
-  const ytdLabels = new Set();
-  const groups = d.groups.map((g) => {
-    const items = g.items.map(([label, dollars, p]) => {
-      // 1. LIVE prime-cost lines (when we have a live figure)
-      if (label === "Food Cost" && foodDollars != null) { liveLabels.add(label); return [label, foodDollars, estSales > 0 ? foodDollars / estSales : 0]; }
-      if (label === "Paper Cost" && paperDollars != null) { liveLabels.add(label); return [label, paperDollars, estSales > 0 ? paperDollars / estSales : 0]; }
-      if (label === "Wages" && wagesDollars != null) { liveLabels.add(label); return [label, wagesDollars, estSales > 0 ? wagesDollars / estSales : 0]; }
-      if (label === "Wage Taxes" && wageTaxDollars != null) { liveLabels.add(label); return [label, wageTaxDollars, estSales > 0 ? wageTaxDollars / estSales : 0]; }
-      // 2. FIXED-DOLLAR lines — hold the flat dollar, show % vs Est Sales
-      if (fixedDollar().has(label)) { return [label, dollars, estSales > 0 ? dollars / estSales : 0]; }
-      // 3. Everything else — carry at YTD % when we have it (incl. a live line
-      //    that had no live figure this month, e.g. Wages before payroll)
-      const y = ytdPct(label);
-      if (y != null) { ytdLabels.add(label); return [label, y * estSales, y]; }
-      // 4. Fallback — the month template value (no YTD on file for this line)
-      return [label, dollars, p];
-    });
-    return { ...g, items };
+  return fcrBuildLiveProjection(d, estSales, foodPct, paperPct, laborPct, ytd, {
+    fixedDollarLines: fixedDollar(),
+    feeShare: feeShare(),
   });
-
-  const totalExpenses = groups.reduce((s, g) => s + g.items.reduce((s2, [, v]) => s2 + v, 0), 0);
-  const operatingProfitDollars = estSales - totalExpenses;
-  const operatingProfitPct = estSales > 0 ? operatingProfitDollars / estSales : 0;
-
-  // Base Profit — fixed dollar carried from the template ($1,000).
-  const baseProfitDollars = d.totals.baseProfit[0];
-  const baseProfitPct = estSales > 0 ? baseProfitDollars / estSales : 0;
-
-  // Base Operating Fee — the plug: Equip Rent + Biz Svc Fee + this = 15% of
-  // sales. Read the two fixed lines back out of the carried groups so the
-  // identity always holds, then recompute the fee live off Est Sales.
-  const feesGroup = groups.find((g) => g.name === "Fees & Taxes");
-  const equipRent = feesGroup?.items.find(([l]) => l === "Equipment Rent")?.[1] || 0;
-  const bizSvcFee = feesGroup?.items.find(([l]) => l === "Business Service Fee")?.[1] || 0;
-  const baseOperatingFeeDollars = feeShare() * estSales - equipRent - bizSvcFee;
-  const baseOperatingFeePct = estSales > 0 ? baseOperatingFeeDollars / estSales : 0;
-
-  const netProfitDollars = operatingProfitDollars - baseProfitDollars - baseOperatingFeeDollars;
-  const netProfitPct = estSales > 0 ? netProfitDollars / estSales : 0;
-
-  return {
-    groups, liveLabels, ytdLabels,
-    totals: {
-      totalExpenses,
-      operatingProfit: [operatingProfitDollars, operatingProfitPct],
-      baseProfit: [baseProfitDollars, baseProfitPct],
-      baseOperatingFee: [baseOperatingFeeDollars, baseOperatingFeePct],
-      netProfit: [netProfitDollars, netProfitPct],
-    },
-  };
 }
 
 const num = { fontVariantNumeric: "tabular-nums" };
@@ -480,7 +485,14 @@ function Row({ label, dollars, percent, strong, muted, rail, live, ytd, ytdD, yt
   const showYtdPair = ytdD !== undefined || ytdP !== undefined;
   return (
     <div style={{
-      display: "flex", alignItems: "baseline", gap: 10,
+      /* ⚠️ `wrap` IS A GUARD, NOT THE LAYOUT. The grid floor above is sized so
+         a row always fits on one line; this is what happens if it ever does not
+         — on a phone narrower than the row's 394px minimum, or if somebody adds
+         a sixth column and forgets the note above. A wrapped money row looks
+         wrong and gets reported. An overflowing one paints over the card beside
+         it and HIDES figures, which is how this reached Matt as a screenshot
+         rather than as a complaint. Ugly beats hidden on a money screen. */
+      display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap",
       padding: "6px 0 6px " + (rail ? "10px" : "0"),
       borderBottom: "1px dotted #D1D5DB",
       borderLeft: rail ? `3px solid ${rail}` : "none",
@@ -612,6 +624,9 @@ export default function FCRPage() {
      number; this holds the H:MM or the "408 + 122.50" the person is entering,
      so the field can show their working instead of fighting them mid-keystroke. */
   const [draft, setDraft] = useState({});
+  /* The Add PTO box holds one amount and clears on add, so it is its own
+     draft rather than a key inside `draft` (which commits a FIELD on blur). */
+  const [ptoDraft, setPtoDraft] = useState("");
   // Hold + hand-set window live behind a link now; see the note where it renders.
   const [showLaborAdvanced, setShowLaborAdvanced] = useState(false);
   const [salesDays, setSalesDays] = useState({});   // iso -> total
@@ -694,6 +709,28 @@ export default function FCRPage() {
          non-zero total — which would read as "my PTO disappeared". It persists
          on his next save anyway, so nothing is edited behind him. */
       if (!next.ptoA && !next.ptoB && !next.ptoC && Number(next.pto) > 0) next.ptoA = next.pto;
+      /* ★★ PTO IS A LIST OF ENTRIES NOW, AND `pto` IS DERIVED FROM IT.
+         🐛 Matt, Aug 19 2026: "adding pto didnt stack or add up. it erased the
+         firsts. entry." One box holding the TOTAL replaces on every save, so a
+         second pay period typed on its own wiped the first with no warning and
+         no undo. He updates PTO twice monthly, weeks apart, so retyping the
+         old figure with a `+` was never going to happen — and his original ask
+         was "PTO can be one as long as it auto adds".
+
+         ⚠️⚠️ SEEDED IN MEMORY, NEVER A REWRITE OF STORED DATA, exactly like the
+         slot migration above it. A month saved before this existed opens
+         showing its real figure as one entry, so nothing looks lost, and it
+         persists on his next save.
+
+         ⚠️ THE SEED PREFERS THE SLOTS WHEN THEY CARRY MORE THAN ONE, because
+         those are separate pay periods somebody typed separately. Falling back
+         to the single `pto` total would silently merge two entries into one. */
+      if (!Array.isArray(next.ptoEntries)) {
+        const fromSlots = ["ptoA", "ptoB", "ptoC"]
+          .map((k) => Number(next[k]) || 0).filter((n) => n > 0);
+        const seed = fromSlots.length ? fromSlots : (Number(next.pto) > 0 ? [Number(next.pto)] : []);
+        next.ptoEntries = seed.map((amount, i) => ({ id: `seed${i}`, amount: round2(amount), at: "" }));
+      }
       // Effective window = a pinned "hours through" date if the user set one,
       // else auto-track the last day sales are entered for. We DELIBERATELY do
       // NOT write the auto value into next.hoursThrough — persisting it would
@@ -834,7 +871,54 @@ export default function FCRPage() {
      There is no second source of truth to drift. */
   const PTO_SLOTS = ["ptoA", "ptoB", "ptoC"];
   const isPtoSlot = (f) => PTO_SLOTS.includes(f);
-  const ptoTotalOf = (o) => round2(PTO_SLOTS.reduce((sum, k) => sum + (Number(o[k]) || 0), 0));
+  /* ⚠️⚠️ ONE SOURCE OF TRUTH: THE ENTRY LIST. `pto` is recomputed from it on
+     every change and stays the field labor %, projected wages and the MTD stat
+     already read — none of those changed. A second place holding "how much PTO"
+     is rule 8, and here the drift shows up as the labor percentage disagreeing
+     with the number printed beside it. */
+  const ptoListOf = (o) => (Array.isArray(o.ptoEntries) ? o.ptoEntries : []);
+  /* ⚠️ NO ENTRIES STORES BLANK, NEVER THE STRING "0". `round2(0)` is "0", which
+     is TRUTHY, so any reader testing `!!mtd.pto` would read "somebody entered
+     zero PTO" where the truth is nobody entered any. Absent and zero are
+     different facts, which is the rule the rest of the Hub follows. */
+  const ptoTotalOf = (o) => {
+    const list = ptoListOf(o);
+    if (!list.length) return "";
+    return round2(list.reduce((sum, e) => sum + (Number(e.amount) || 0), 0));
+  };
+
+  /* ★ ADD, NEVER REPLACE. The box holds one pay period's amount and clears
+     itself, so the natural action is the safe one. The expression parser still
+     applies, so "400 + 100" lands as a single 500 entry — one thing typed at
+     one time is one entry.
+
+     ⚠️ AN UNREADABLE AMOUNT ADDS NOTHING AND KEEPS WHAT WAS TYPED, the same
+     rule commitMtdField already follows: losing what somebody typed is
+     annoying, corrupting a month's labor cost is expensive.
+
+     ⚠️ NEVER PINS THE PAYROLL WINDOW. `pinWindowOnPayroll` only fires on wages
+     and hours, and PTO deliberately does not — it corrects a number inside a
+     window already agreed, and re-pinning here would move the window every
+     time he added a pay period. */
+  const addPtoEntry = () => {
+    const amount = sumMoney(ptoDraft);
+    if (amount === null || !(amount > 0)) return;
+    const entry = { id: `p${Date.now()}${Math.floor(Math.random() * 1000)}`, amount: round2(amount), at: todayISO() };
+    const next = { ...mtd, ptoEntries: [...ptoListOf(mtd), entry] };
+    next.pto = ptoTotalOf(next) || "";
+    next.laborPctOverride = "";
+    setPtoDraft("");
+    persistMtd(next);
+  };
+
+  /* ⚠️ REMOVE IS THE UNDO, AND IT IS WHY ADD CAN BE SAFE. A typo used to mean
+     retyping the whole total from memory; now it means deleting one line. */
+  const removePtoEntry = (id) => {
+    const next = { ...mtd, ptoEntries: ptoListOf(mtd).filter((e) => e.id !== id) };
+    next.pto = ptoTotalOf(next) || "";
+    next.laborPctOverride = "";
+    persistMtd(next);
+  };
 
   // Typing only touches the draft. Nothing reaches storage until blur, so a
   // half-finished "8086:" or "408 +" can never be persisted or read as a number.
@@ -952,6 +1036,12 @@ export default function FCRPage() {
   // catch up — the old code froze this date once saved.
   const lastSalesIso = useMemo(() => Object.keys(salesDays).sort().pop() || "", [salesDays]);
   const effThrough = mtd.hoursThrough || lastSalesIso;
+  /* The window the MTD payroll boxes are counted against, in the words a person
+     would use. ⚠️ Declared HERE, next to `effThrough`, and not down in the JSX:
+     both are read during render, and a const declared below its reader is the
+     TDZ class that blanks a whole tile while parsing perfectly (check 4). */
+  const monthFirstIso = `${ym}-01`;
+  const laborWindowDays = daysCovered(monthFirstIso, effThrough);
   const salesThrough = useMemo(() => {
     return Object.entries(salesDays).reduce((s, [iso, v]) => (!effThrough || iso <= effThrough ? s + v : s), 0);
   }, [salesDays, effThrough]);
@@ -960,6 +1050,9 @@ export default function FCRPage() {
   // ── YTD % per line for the projection carry (line ÷ YTD sales) ──
   const ytdSalesN = Number(ytdRec?.sales) || 0;
   const ytdMonths = ytdMonthCount(ytdRec?.throughYm);
+  /* ⚠️ AGAINST THE MONTH ON SCREEN, not against today. Paging back to a closed
+     month must not accuse the YTD column of being behind. */
+  const ytdBehind = ytdMonthsBehind(ytdRec?.throughYm, ym);
   const ytdPctMap = useMemo(() => {
     const out = {};
     if (ytdSalesN > 0 && ytdRec?.lines) {
@@ -1498,6 +1591,80 @@ export default function FCRPage() {
           Sales lives on the Planner forecast, every other line carries at YTD
           — the same math the open month always uses. A hand tab, if one is
           ever added to DATA, takes over automatically. */}
+      {/* ⚠️⚠️ THE TOP OF THE PAGE IS WHERE THIS BELONGS. Nick opens this every
+          morning and reads the headline. The YTD date lives two screens down
+          inside an editor he has no reason to open, so a stale column was
+          invisible at exactly the moment somebody was trusting the number. */}
+      {/* ⚠️⚠️ TWO NUMBERS FOR ONE THING, ON TWO SCREENS. Matt, Aug 17 2026:
+          "wages say 20.19 inside the fcr but in the ket metrics it says 21.46."
+
+          Both are correct and both are the same formula. The Wages line here is
+          `laborPct x estSales / estSales`, which IS laborPct — the LIVE figure.
+          The Key Metrics strip reads the last PUBLISHED one, and while the hold
+          is on nothing publishes, so it keeps showing the day the hold started.
+
+          ⇒ The page already said this, in `Held. …it would currently read X%` —
+          inside a panel that is collapsed by default. So the explanation existed
+          and was two clicks from the number it explained. A reader comparing two
+          screens never saw it.
+
+          ⚠️ IT NAMES BOTH SURFACES. "Labor is held" does not tell somebody why
+          the dashboard disagrees; saying which screen shows which number does. */}
+      {(laborHeld || laborOverrideN != null) && (
+        <div style={{
+          background: "#FFF8E6", border: "1px solid #F0C36D", borderRadius: 12,
+          padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#78350F",
+        }}>
+          <b>
+            {laborOverrideN != null
+              ? "The labor % on this page is typed in by hand, not measured."
+              : "Labor is on hold, so this page and the dashboard show different numbers."}
+          </b>
+          {/* ⚠️⚠️ THE OVERRIDE IS THE MORE DANGEROUS OF THE TWO AND IT HAD NO
+              BANNER AT ALL. A hold at least prints "held" on the dashboard. A
+              typed labor % silently replaces the measured one everywhere the
+              projection reaches — Wages, Wage Taxes, Operating Profit, Base
+              Operating Fee and Net Profit — and the only sign was the words
+              "entered manually" in small grey text beside one figure.
+              ⇒ Show BOTH numbers. "It is overridden" does not tell anybody the
+              measured one is a point higher; printing them together does. */}
+          {laborOverrideN != null && (
+            <div style={{ marginTop: 6 }}>
+              Every projected line below uses <b>{(laborOverrideN * 100).toFixed(2)}%</b>, entered by hand.
+              {liveLaborPct != null && <> Your own wages and sales work out to <b>{(liveLaborPct * 100).toFixed(2)}%</b>.</>}
+              {" "}That gap moves Wages, Wage Taxes, Operating Profit and Net Profit.
+              Clear the box in the labor section below to go back to the measured figure.
+            </div>
+          )}
+          {laborHeld && (
+            <div style={{ marginTop: 6 }}>
+              The Key Metrics strip, the L10 board and the morning digest are showing the
+              last <i>published</i> labor %, from before the hold went on — not the
+              {laborPct != null ? <> <b>{(laborPct * 100).toFixed(2)}%</b></> : null} on this page.
+              Neither is wrong; they are answering different days. Turn the hold off in the
+              labor box below and they will agree again.
+            </div>
+          )}
+        </div>
+      )}
+
+      {ytdBehind > 0 && (
+        <div style={{
+          background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12,
+          padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#7F1D1D",
+        }}>
+          <b>Most of the numbers below are {ytdBehind === 1 ? "a month" : `${ytdBehind} months`} old.</b>{" "}
+          The YTD column still runs through {prettyMonth(ytdRec?.throughYm)}, so every line
+          except Food, Paper, Wages and Wage Taxes is carrying at that month's percentage —
+          and so is the Projected Net Profit at the top.
+          <div style={{ marginTop: 6 }}>
+            Enter the newest FCR in the YTD table further down this page, or paste it with the
+            import button. Until then this page is a {prettyMonth(ytdRec?.throughYm)} answer to
+            an {monthNameCased} question.
+          </div>
+        </div>
+      )}
+
       {!hasTemplate && (
         <div style={{
           background: estUsable ? "#F0FDFA" : "#FFFBEB", border: `1px solid ${estUsable ? "#99F6E4" : "#FDE68A"}`, borderRadius: 12,
@@ -1523,7 +1690,9 @@ export default function FCRPage() {
       {viewMode === "actual" && (
         <div style={{ background: cardSurface(), border: "1px solid #E5E7EB", borderRadius: 12, ...accentEdge(TEAL, 3), boxShadow: CARD_3D, padding: "12px 16px", marginBottom: 16 }}>
           <div style={{ fontSize: 13, color: "#374151", marginBottom: 8 }}>
-            <b>FCR back from corporate?</b> Drop the PDF on Claude, paste the block it hands back, and this fills the actual and the YTD column in one go. Every hand-edit field below keeps working.
+            <b>FCR back from corporate?</b> Drop the PDF straight into the box below,
+            or paste the figures by hand. Either way this fills the actual and the
+            YTD column in one go, and every hand-edit field below keeps working.
           </div>
           {/* 🐛 A PLACEHOLDER TEACHES A FORMAT. IT DOES NOT NEED REAL MONEY.
               (Aug 9 2026 sweep, findings 14 and 31.) These strings are compiled
@@ -1639,7 +1808,31 @@ export default function FCRPage() {
         );
       })()}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+      {/* ⚠️⚠️ 440, NOT 320, AND THE NUMBER IS ARITHMETIC RATHER THAN TASTE.
+          Matt's iPad, Aug 17 2026: the Month-to-date card painted straight over
+          the Expenses column and the YTD figures underneath it were unreadable.
+
+          A `Row` with a YTD pair is a flex line of five fixed minimums —
+          label 90 + amount 84 + pct 48 + YTD amount 84 + YTD pct 48 = 354 —
+          plus four 10px gaps = 394, before the card's own border and padding.
+          The old 320px floor let auto-fit choose TWO columns at widths where a
+          row could not fit one, so it overflowed its card and grid does not
+          clip, which is why it landed on top of its neighbour.
+
+          ⇒ 440 is 394 plus the card's padding and border with a little room. At
+          anything narrower the grid now drops to one column, where a row has
+          the whole width and fits.
+          ⚠️ IF A COLUMN IS EVER ADDED TO `Row`, THIS NUMBER MOVES WITH IT. */}
+      {/* ⚠️⚠️ `min(440px, 100%)`, NOT `440px`. I shipped the bare 440 this morning
+          and it broke the phone within the hour: a minmax MINIMUM is a floor the
+          track never goes below, so on a ~390px phone the column stayed 440 and
+          the whole card hung off the right edge with the percentages cut away.
+          Wrapping it in min() clamps the floor to the container on anything
+          narrower, so a phone gets one full-width column and a tablet still gets
+          two only when each really has room.
+          ⇒ The overlap fix and the overflow fix are the SAME number seen from
+          two sides, which is why the first version looked complete. */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(440px, 100%), 1fr))", gap: 16 }}>
 
         {/* ── Statement column ───────────────────────────────────── */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1986,6 +2179,58 @@ export default function FCRPage() {
 
             {inputsOpen && (
               <div style={{ padding: "0 12px 10px" }}>
+                {/* ══ WHAT WINDOW AM I TYPING INTO? ═══════════════════════════
+                    Matt, Aug 18 2026: "for inputing labor instructions make
+                    sure it says in the actual tab. it might be confusing or
+                    make it smart to know the date its being input?"
+
+                    ⚠️⚠️ THE ANSWER WAS ELSEWHERE ON THE PAGE, WHICH IS THE SAME
+                    AS NOT HAVING ONE. The window this payroll is counted
+                    against was stated in 10px grey at the BOTTOM of a folded
+                    panel two sections down, and the override banner said
+                    "clear the box in the labor section below" — both of which
+                    ask somebody mid-task to go and find something. The fact
+                    belongs where the typing happens.
+
+                    ★ AND IT IS SMART IN THE ONLY WAY IT HONESTLY CAN BE. The
+                    Hub cannot know a store's pay period; only a person does.
+                    What it CAN do is say the window back in real dates and
+                    count the days, so a fortnightly payroll typed against a
+                    16-day window is visibly wrong instead of quietly wrong.
+                    ⛔ DO NOT "improve" this by GUESSING the period from the day
+                    count. A 14 that guesses fortnightly is right until the one
+                    month it is not, and being confidently wrong about the
+                    labor window is the whole failure this page keeps paying
+                    for. It states, the leader decides. */}
+                <div style={{
+                  background: "#F5F8FB", border: "1px solid #E1E9F1", borderRadius: 8,
+                  padding: "8px 10px", marginBottom: 10, fontSize: 11, color: "#31465C", lineHeight: 1.5,
+                }}>
+                  <div style={{ fontWeight: 800, marginBottom: 2 }}>
+                    These numbers cover {prettyDate(monthFirstIso)} to {prettyDate(effThrough)}
+                    {laborWindowDays ? ` · ${laborWindowDays} day${laborWindowDays === 1 ? "" : "s"}` : ""}
+                  </div>
+                  <div>
+                    Enter payroll <b>from the 1st through that end date</b>, not one pay period on its own.
+                    Labor % is (wages + PTO) ÷ the {money(salesThrough)} of sales in the same window.
+                  </div>
+                  <div style={{ marginTop: 4, color: "#5A7085" }}>
+                    {pinned
+                      ? <>The end date is <b>set by hand</b>. If this pay period now covers more days, change it.</>
+                      : <>The end date <b>follows your last entered sales day</b> and moves on its own. Set it by hand if your paid hours stop somewhere else.</>}
+                    {" "}
+                    <button
+                      type="button"
+                      onClick={() => setShowLaborAdvanced(true)}
+                      style={{
+                        fontSize: 11, fontWeight: 800, color: "#1D4266", background: "none",
+                        border: "none", padding: 0, textDecoration: "underline", cursor: "pointer",
+                      }}
+                    >
+                      Change the end date
+                    </button>
+                  </div>
+                </div>
                 {/* Not three equal columns: wages carries the longest value in the
                     row (142865.29, and six figures once a bigger month lands, more
                     again with a "+" expression), while OT is the shortest thing on
@@ -2039,18 +2284,83 @@ export default function FCRPage() {
                     </div>
                   </label>
 
-                  {/* ★ ONE BOX THAT ADDS UP, not three (Matt, Jul 29 2026: "PTO
-                      can be one as long as it auto adds"). Three fixed slots
-                      existed so he could see each pay period separately, but the
-                      page already sums an expression in every other money field
-                      — "408 + 112" reads as 520 and echoes the total under the
-                      box. So the second and third boxes were solving a problem
-                      the typing already solved, at the cost of two thirds of the
-                      clutter he was complaining about. */}
-                  <input style={inputStyle} inputMode="text" placeholder="400 + 100"
-                    value={mtdShown("pto")}
-                    onChange={(e) => editMtdField("pto", e.target.value)}
-                    onBlur={() => commitMtdField("pto")} />
+                  {/* ★★ ONE BOX THAT ACTUALLY ADDS. Matt, Jul 29 2026: "PTO can
+                      be one as long as it auto adds." It shipped as one box
+                      holding the TOTAL, which only added inside a single typing
+                      session — across two weeks it REPLACED.
+
+                      🐛 Aug 19 2026: "adding pto didnt stack or add up. it
+                      erased the firsts. entry." He updates PTO twice monthly, so
+                      typing the new pay period on its own is the natural action,
+                      and the natural action destroyed the first figure with no
+                      warning and no undo.
+
+                      ⇒ THE BOX IS AN ENTRY NOW, NOT THE TOTAL. Type one pay
+                      period, press Add, it clears. The total is printed beside
+                      it and every entry is listed with an × so a typo is one tap
+                      to fix instead of retyping a number from memory.
+
+                      ⚠️ THE EXPRESSION STILL WORKS — "400 + 100" adds one entry
+                      of 500, because one thing typed at one time is one entry.
+                      ⚠️ ENTER ADDS, so the keyboard path matches the button and
+                      nobody has to reach for the mouse mid-entry. */}
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input style={{ ...inputStyle, flex: 1 }} inputMode="text" placeholder="400"
+                      value={ptoDraft}
+                      onChange={(e) => { const v = e.target.value; setPtoDraft(cleanMoneyExpr(v)); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPtoEntry(); } }} />
+                    <button type="button" onClick={addPtoEntry}
+                      disabled={!(sumMoney(ptoDraft) > 0)}
+                      style={{
+                        border: "1px solid #0F766E", background: (sumMoney(ptoDraft) > 0) ? "#0F766E" : "#F3F4F6",
+                        color: (sumMoney(ptoDraft) > 0) ? "#fff" : "#9CA3AF",
+                        borderColor: (sumMoney(ptoDraft) > 0) ? "#0F766E" : "#E5E7EB",
+                        borderRadius: 8, padding: "0 14px", fontWeight: 800, fontSize: 12,
+                        cursor: (sumMoney(ptoDraft) > 0) ? "pointer" : "default", whiteSpace: "nowrap",
+                      }}>Add</button>
+                  </div>
+                  {ptoDraft.trim() !== "" && (
+                    <div style={echoStyle}>
+                      {sumMoney(ptoDraft) === null || !(sumMoney(ptoDraft) > 0)
+                        ? "can't read that"
+                        : `adds $${Number(sumMoney(ptoDraft)).toFixed(2)} \u00b7 new total $${Number(ptoTotalOf(mtd) || 0).toFixed(2)} \u2192 $${(Number(ptoTotalOf(mtd) || 0) + Number(sumMoney(ptoDraft))).toFixed(2)}`}
+                    </div>
+                  )}
+
+                  {/* ⛔ THE LIST IS THE PROOF NOTHING WAS LOST. A single total
+                      cannot show you that two pay periods went in, which is
+                      exactly how the first one going missing stayed invisible. */}
+                  {ptoListOf(mtd).length > 0 && (
+                    <div style={{ marginTop: 6 }}>
+                      {ptoListOf(mtd).map((e) => (
+                        <div key={e.id} style={{
+                          display: "flex", alignItems: "center", gap: 8, padding: "4px 0",
+                          borderTop: "1px solid #F1F3F5", fontSize: 12,
+                        }}>
+                          <span style={{ fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
+                            ${Number(e.amount || 0).toFixed(2)}
+                          </span>
+                          {e.at ? <span style={{ color: "#9CA3AF", fontSize: 10.5 }}>added {ptoWhen(e.at)}</span> : null}
+                          <button type="button" onClick={() => removePtoEntry(e.id)}
+                            aria-label={`Remove PTO entry of $${Number(e.amount || 0).toFixed(2)}`}
+                            style={{
+                              marginLeft: "auto", border: "1px solid #E5E7EB", background: "#fff",
+                              color: "#9CA3AF", borderRadius: 6, width: 22, height: 22,
+                              lineHeight: 1, cursor: "pointer", fontWeight: 800,
+                            }}>&times;</button>
+                        </div>
+                      ))}
+                      <div style={{
+                        display: "flex", borderTop: "1px solid #E5E7EB", paddingTop: 5, marginTop: 2,
+                        fontSize: 12, fontWeight: 800,
+                      }}>
+                        <span style={{ color: "#6B7280" }}>Total PTO</span>
+                        <span style={{ marginLeft: "auto", fontVariantNumeric: "tabular-nums" }}>
+                          ${Number(ptoTotalOf(mtd) || 0).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ marginTop: 10 }}>
@@ -2212,6 +2522,24 @@ export default function FCRPage() {
                           Pin this date
                         </button>
                       )}
+                      {/* ⚠️⚠️ THE WAY BACK OUT WAS MISSING, AND THIS IS THE HALF THAT
+                          COST A DAY. "Pin this date" has always been here; UNPINNING
+                          only ever appeared inside the red stale-window banner, which
+                          renders on `wagesMovedSinceThrough || windowStale`. So a date
+                          pinned to a CORRECT-looking day — one no warning fires on —
+                          had no control anywhere on the screen that undid it. The only
+                          route was clearing a native date input, which on an iPad is
+                          most of a minute of poking, and Matt asked "how".
+                          ⚠️ A CONTROL THAT ONLY APPEARS WHEN SOMETHING IS ALREADY WRONG
+                          is not an undo, it is a rescue. Pairing it with Pin means the
+                          switch reads the same in both positions. */}
+                      {pinned && (
+                        <button type="button" onClick={() => setHoursThrough("")}
+                          style={{ fontSize: 11, fontWeight: 800, padding: "7px 10px", borderRadius: 8, border: "1px solid #B45309",
+                                   background: "#fff", color: "#B45309", cursor: "pointer", whiteSpace: "nowrap" }}>
+                          Unpin
+                        </button>
+                      )}
                     </div>
                   </label>
                   <div style={{ fontSize: 10, color: (salesLagWindow || salesBeyondWindow) ? "#B45309" : "#9CA3AF", marginTop: 4 }}>
@@ -2266,8 +2594,23 @@ export default function FCRPage() {
           <Stat
             label="MTD LABOR"
             value={windowTrusted ? pct(laborPct) : "—"}
+            /* ⚠️⚠️ IT NOW SAYS THE SIMPLER FIX FIRST. Matt, Aug 17 2026: "How can
+               we make sure that all inputs are synced to the same date to avoid
+               simple errors. We need it to be dummy proof."
+
+               It already is, and BLANK is the dummy-proof state. `effThrough`
+               is `mtd.hoursThrough || lastSalesIso`, and every one of the three
+               distrust tests in laborWindow.js begins with `pinned`. So an
+               empty box follows the sales data on its own, forever, and can
+               never go stale. The moment somebody types a date it is pinned,
+               and from then on every payroll update trips
+               `wagesMovedSinceThrough` and the number stops publishing.
+
+               ⇒ Telling somebody to "confirm the date" sends them to re-pin the
+               very thing that will go stale again next week. Clearing it ends
+               the problem permanently, so that is the sentence they read. */
             sub={!windowTrusted
-              ? "Hours-through date needs confirming above. Labor % is not reliable until it is."
+              ? "Clear the hours-through box above and this follows your sales dates on its own. Leave a date in it and it needs re-confirming every time payroll changes."
               : laborGoal != null
                 ? `Goal ${pct(laborGoal)} · on ${money(salesThrough)} sales thru ${prettyDate(effThrough)} · ${plan?.tierLabel || "tier"} @ ${money(plannedWage)}/hr${laborSubTag}`
                 : `Goal — · Planner not configured${laborSubTag}`}
@@ -2293,14 +2636,20 @@ export default function FCRPage() {
           />
           <Stat
             label="MTD AVG WAGE"
-            value={`$${avgWage.toFixed(2)}/hr`}
-            sub={`Chain avg $${m.chainAvg}${liveAvgWage != null ? " · live (wages ÷ paid hours)" : ""}${
+            value={perHour(avgWage, "/hr")}
+            /* ⚠️ `chainAvg` IS NOT A NUMBER HERE AND `perHour` MUST NOT TOUCH IT.
+               This store's is the string "18.35 / 18.07" — two figures — so
+               `Number(...)` is NaN, `absent` says yes, and a real benchmark that
+               is on file would print as "—". The Village uses `perHour` on this
+               line because theirs is genuinely absent. Same bug, different data,
+               different guard: this one only has to answer "is anything there". */
+            sub={`Chain avg ${m.chainAvg == null || m.chainAvg === "" ? "—" : `$${m.chainAvg}`}${liveAvgWage != null ? " · live (wages ÷ paid hours)" : ""}${
               plannedWage != null && liveAvgWage != null ? ` · planned ${money(plannedWage)}` : ""}`}
             tone={plannedWage != null && liveAvgWage != null ? (liveAvgWage <= plannedWage ? "good" : "over") : undefined}
           />
-          <Stat label="MTD WAGES" value={money(wagesShown)} sub={ptoN > 0 ? `+ ${money(ptoN)} PTO · ${money(wagesN + ptoN)} total labor cost` : undefined} />
-          <Stat label="MTD HOURS" value={`${Number(hoursShown).toLocaleString("en-US")} paid`} sub={nonOpThrough > 0 ? `${opHours.toFixed(2)} operational · ${nonOpThrough.toFixed(2)} non-op` : undefined} />
-          <Stat label="MTD OVERTIME" value={otShown} tone={otShown > 0 ? "over" : "good"} />
+          <Stat label="MTD WAGES" value={absent(wagesShown) ? "—" : money(wagesShown)} sub={ptoN > 0 ? `+ ${money(ptoN)} PTO · ${money(wagesN + ptoN)} total labor cost` : undefined} />
+          <Stat label="MTD HOURS" value={absent(hoursShown) ? "—" : `${Number(hoursShown).toLocaleString("en-US")} paid`} sub={nonOpThrough > 0 ? `${opHours.toFixed(2)} operational · ${nonOpThrough.toFixed(2)} non-op` : undefined} />
+          <Stat label="MTD OVERTIME" value={absent(otShown) ? "—" : otShown} tone={absent(otShown) ? undefined : otShown > 0 ? "over" : "good"} />
         </div>
       </div>
 

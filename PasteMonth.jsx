@@ -19,6 +19,7 @@ import { useState } from "react";
    Scorecard, Labor Planner twice, Food Safety Walkthrough, Food Cost Tracker
    twice, FCR and Guest Experience — so one import here is nine screens fixed. */
 import { importZone } from "./cardStyle.js";
+import ImportFileZone from "./ImportFileZone.jsx";
 
 export default function PasteMonth({
   buttonLabel = "Paste a month",
@@ -95,10 +96,12 @@ export default function PasteMonth({
               ))}
             </div>
           )}
-          <textarea rows={6} value={text}
-            onChange={(e) => { const v = e.target.value; setText(v); }}
-            placeholder={placeholder}
-            style={importZone()} />
+          <ImportFileZone onText={(t) => setText(t)}>
+            <textarea rows={6} value={text}
+              onChange={(e) => { const v = e.target.value; setText(v); }}
+              placeholder={placeholder}
+              style={importZone()} />
+          </ImportFileZone>
           <button type="button" onClick={run} disabled={busy}
             style={{ marginTop: 6, fontSize: 13, fontWeight: 800, padding: "9px 14px", borderRadius: 8, border: "none",
                      background: busy ? "#9CA3AF" : "#047857", color: "#fff", cursor: busy ? "default" : "pointer" }}>

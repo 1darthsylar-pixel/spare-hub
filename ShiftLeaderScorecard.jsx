@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 /* The one raised look, shared with every tool — see cardStyle.js. */
 import { CARD_3D, cardSurface, accentEdge, ACCENT_NEUTRAL } from "./cardStyle.js";
 /* Grading thresholds live in the leaf too, so the digest grades identically. */
-import { SL_LEAD_SLOTS, SL_METRIC_DEFS, SCAN_GREEN, SCAN_AMBER, TX_BANDS, TX_BANDS_FALLBACK, SOS_GREEN, SOS_RED, AHA_GREEN, AHA_RED } from "./slScorecardDefs.js";
+import { SL_LEAD_SLOTS, SL_METRIC_DEFS, SL_DAYPARTS, slParseMSS, slFmtMSS, SCAN_GREEN, SCAN_AMBER, TX_BANDS, TX_BANDS_FALLBACK, SOS_GREEN, SOS_RED, AHA_GREEN, AHA_RED } from "./slScorecardDefs.js";
 import { kvGetResult, kvGetMany, kvSet, publishSharedRows } from "./store.js";
 import PasteMonth from "./PasteMonth.jsx";
 /* Monthly AHA off the dashboard. A leaf that imports nothing — see ahaMonthly.js. */
@@ -203,12 +203,12 @@ const M_SHORT = {
 
 /* ═══ DAYPARTS + METRIC CONFIG ══════════════════════════════════ */
 
-const DAYPARTS = [
-  { key: "breakfast", label: "Breakfast", window: "6-10:30" },
-  { key: "lunch", label: "Lunch", window: "10:30-2" },
-  { key: "afternoon", label: "Afternoon", window: "2-5" },
-  { key: "dinner", label: "Dinner", window: "5-10" },
-];
+/* ⚠️ THE LIST MOVED TO THE LEAF, and the local name stays so the ~11 readers
+   below are untouched — same shape as `const METRICS = SL_METRIC_DEFS` above.
+   It is shared because the Report Card and the digest aggregate these same
+   records server-side, and a fifth copy of four strings is how a roll-up ends
+   up reading a daypart the tile never writes. */
+const DAYPARTS = SL_DAYPARTS;
 
 /* METRIC MODEL
    score: see the SCORING SHAPES block at the top of the file.
@@ -446,26 +446,11 @@ const paperRag = (pct) => {
 
 const pad2 = (v) => String(v).padStart(2, "0");
 
-// "3:44" → 224 ; "224" → 224 ; blank/garbage → null
-function parseMSS(raw) {
-  if (raw === null || raw === undefined) return null;
-  const s = String(raw).trim();
-  if (s === "") return null;
-  if (s.includes(":")) {
-    const parts = s.split(":");
-    const m = Number(parts[0]);
-    const sec = Number(parts[1]);
-    if (Number.isNaN(m) || Number.isNaN(sec)) return null;
-    return m * 60 + sec;
-  }
-  const n = Number(s);
-  return Number.isNaN(n) ? null : n; // bare number read as seconds
-}
-function fmtMSS(sec) {
-  if (sec === null || sec === undefined) return "—";
-  const s = Math.round(sec);
-  return `${Math.floor(s / 60)}:${pad2(s % 60)}`;
-}
+/* ⚠️ parseMSS and fmtMSS moved to slScorecardDefs.js — the digest carried a
+   byte-identical copy under another name. Local aliases keep the ~5 readers
+   below unchanged. */
+const parseMSS = slParseMSS;
+const fmtMSS = slFmtMSS;
 
 /* ═══ SCORING (dual: 1-5 + RAG) ═════════════════════════════════ */
 

@@ -29,7 +29,7 @@ import { CARD_3D, CARD_3D_SOFT, cardSurface, accentEdge, sectionTint, shade } fr
 import { sectionsOf } from "./storeConfig.js";
 import {
   TRAINING_SIDES, MODES, MODE_LABEL,
-  readTraining, setList, setMode, parseList, mergeCodes, unmergeCode,
+  readTraining, setList, setMode, parseList, mergeCodes, unmergeCode, moveInList,
 } from "./trainingPriorities.js";
 import { normCode } from "./jobCodes.js";
 
@@ -398,6 +398,35 @@ export default function TrainingPriorities({ cfg, canEdit, onSave, busy, station
                       {stray ? (
                         <span className="text-[11px] font-semibold ml-auto shrink-0" style={{ color: AMBER }}>
                           not on your board yet
+                        </span>
+                      ) : null}
+                      {/* ⭐⭐ MOVE THE ROW. Matt, Aug 21 2026: "these training
+                          priorities regressed. i had them arranged yesterday."
+                          Nothing had regressed — read from the store's own
+                          record, no save had happened since Aug 14, because
+                          there was no way to reorder. The screen showed a
+                          numbered list and offered paste, group and split, so
+                          rearranging meant retyping everything.
+                          ⚠️ HIDDEN WHILE GROUPING. The row is a pick target in
+                          that mode and a control inside it would eat the tap.
+                          ⚠️ THE ENDS ARE DISABLED, not wrapped. A list that
+                          jumps top to bottom under a mis-tap is worse than a
+                          button that does nothing. */}
+                      {canEdit && grouping !== side ? (
+                        <span className="ml-auto flex items-center gap-0.5 shrink-0 pl-1.5">
+                          {[["up", i === 0, "▲"], ["down", i === list.length - 1, "▼"]].map(([dir, off, glyph]) => (
+                            <button
+                              key={dir}
+                              type="button"
+                              aria-label={`Move ${code} ${dir}`}
+                              disabled={busy || off}
+                              onClick={(e) => { e.stopPropagation(); onSave(moveInList(C, side, code, dir)); }}
+                              className="rounded text-[10px] leading-none disabled:opacity-25"
+                              style={{ color: deep, padding: "3px 4px", cursor: off ? "default" : "pointer" }}
+                            >
+                              {glyph}
+                            </button>
+                          ))}
                         </span>
                       ) : null}
                     </li>
