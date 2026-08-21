@@ -85,6 +85,7 @@ import { canSeeProfitShare, isDirector } from "./finShared.js";
    second copy here is how a nudge starts arriving for work somebody already
    did. See goalsWindow.js — it is a leaf and safe for the Worker. */
 import { SUB_KEY as GOAL_SUB_KEY, goalsOwed } from "./goalsWindow.js";
+import { walkBucket } from "./backupWalk.js";
 /* The calendar's rules, from the same leaf the tile and Team Directory read.
    Who may book what, and whether an owner is still taking bookings, must have
    one definition — a permission rule written twice is the bug this repo spent
@@ -1956,37 +1957,38 @@ const backupFilesName = () => `backup-files-${isoOfD(nowET())}.json`;
 
 /* One page of a bucket's objects. Supabase's storage list is a POST, not a GET,
    and it returns `{ name, metadata: { size, mimetype }, updated_at }`. */
-async function backupListBucket(env, bucket) {
-  const out = [];
-  for (let offset = 0; ; offset += BACKUP_LIST_PAGE) {
-    if (out.length > BACKUP_MAX_FILES) {
-      throw new Error(`${bucket} passed ${BACKUP_MAX_FILES} objects; refusing to write a partial manifest`);
-    }
-    const res = await fetch(`${env.SUPABASE_URL}/storage/v1/object/list/${encodeURIComponent(bucket)}`, {
-      method: "POST",
-      headers: {
-        apikey: env.SUPABASE_SERVICE_KEY,
-        Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ prefix: "", limit: BACKUP_LIST_PAGE, offset }),
-    });
-    if (!res.ok) throw new Error(`bucket listing refused: ${res.status} on ${bucket}`);
-    const page = await res.json();
-    if (!Array.isArray(page)) throw new Error(`bucket listing gave no array on ${bucket}`);
-    /* ⚠️ A FOLDER PLACEHOLDER HAS NO metadata AND IS NOT AN OBJECT. Copying one
-       would write a zero-byte file named after a directory. */
-    for (const o of page) {
-      if (!o || !o.name || !o.metadata) continue;
-      out.push({
-        name: String(o.name),
-        size: Number(o.metadata.size) || 0,
-        updatedAt: String(o.updated_at || ""),
-      });
-    }
-    if (page.length < BACKUP_LIST_PAGE) return out;
-  }
+/* ONE PAGE, AT ONE PREFIX. Supabase's storage list is a POST, not a GET, and
+   it returns `{ name, metadata: { size, mimetype }, updated_at }` for an object
+   and `{ name, metadata: null }` for a folder.
+
+   ⚠️⚠️ IT IS FOLDER-SCOPED, WHICH IS THE WHOLE BUG THIS PAIR EXISTS FOR. This
+   function answers for `prefix` and nothing below it. WHERE TO GO NEXT IS
+   `backupWalk.js`'S DECISION, deliberately, because that file can be executed
+   by `checks/` and this one cannot. A backup that copied 19 of 595 files
+   shipped green precisely because the walk lived in here. */
+async function backupListPage(env, bucket, prefix, offset) {
+  const res = await fetch(`${env.SUPABASE_URL}/storage/v1/object/list/${encodeURIComponent(bucket)}`, {
+    method: "POST",
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ prefix, limit: BACKUP_LIST_PAGE, offset }),
+  });
+  /* ⛔ A REFUSED LISTING THROWS. Same rule as the caller: it takes the whole
+     job down rather than producing a manifest that quietly omits a folder. */
+  if (!res.ok) throw new Error(`bucket listing refused: ${res.status} on ${bucket}/${prefix}`);
+  return res.json();
 }
+
+/* Every object in the bucket, folders included. */
+const backupListBucket = (env, bucket) =>
+  walkBucket((prefix, offset) => backupListPage(env, bucket, prefix, offset), {
+    pageSize: BACKUP_LIST_PAGE,
+    maxFiles: BACKUP_MAX_FILES,
+    label: bucket,
+  });
 
 /* Is this object already in R2, at the same size?
    ⚠️ A FAILED HEAD IS TREATED AS "NOT THERE", deliberately. The cost of being
