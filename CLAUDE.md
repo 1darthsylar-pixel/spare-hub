@@ -164,14 +164,30 @@ Most grade code this store genuinely does not have, and those arrive **with the
 feature**. But some are red for the other reason — **the code is here and it has
 drifted.** Measured at the spare, and the same shape is expected here:
 
-| guard | what it found |
-|---|---|
-| `notePanelRing` | six inset panels in `LaborPlanner` not using the shared style |
-| `sectionBands` | `WasteTracker` not importing the shared band |
-| `pageWidth` | the page width still hardcoded in two places |
+| guard | what it found | state |
+|---|---|---|
+| `pageWidth` | the page cap still **860, typed twice**, so the tile grid fit three columns and the rest of a laptop was white | ✅ **fixed.** One named constant; the guard fails if the header and the body ever disagree |
+| `notePanelRing` | the inset panel **written out by hand eight times**, and *three of them with no border at all* — Matt: *"in labor and sales there are 3 boxes without a border"* | ✅ **fixed.** One definition in `cardStyle.js` |
+| `sectionBands` | `WasteTracker` not using the shared band | ⛔ **NOT STARTED, and deliberately so** |
 
-⇒ **That is the same class Matt keeps catching by glancing at a screen.** It is
-real work on `bothChanged` files rather than a copy, and it is **not started.**
+⛔⛔ **`sectionBands` IS A REDESIGN, NOT A FIX, AND THAT IS WHY IT WAS LEFT.**
+Measured: **12 failing assertions**, covering the band, the end figure, the area
+card heads, the period colours and the empty-period state. `WasteTracker.jsx` is
+`bothChanged` here, so none of it can be copied. ⇒ **It is a real job with its
+own plan**, and half-doing it on a live store's waste screen is worse than
+leaving it named.
+
+⚠️⚠️ **AND TWO TRAPS FROM FIXING THE OTHER TWO, BOTH WORTH KEEPING:**
+- **`notePanel` HARDCODES `1px`.** A first pass converted two warning panels
+  carrying `1.5px solid #F59E0B` and `1.5px solid #DC2626`, thinning a
+  deliberate heavy ring **and turning a red error edge grey**. The origin leaves
+  exactly those two alone. ⇒ **Only ever convert a panel whose border is `1px
+  solid`.**
+- **ONE PANEL WAS WRITTEN THE OLDER WAY AND NO REGEX FOUND IT.**
+  `SalesAllocation`'s *"sales could not be reached"* notice used a hand-rolled
+  `borderLeft`/`borderTop` accent with no surface and no shadow. It had to be
+  found by **counting against the origin** (8 against 9) rather than by matching
+  the current shape.
 
 ---
 
