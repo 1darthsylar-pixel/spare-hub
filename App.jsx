@@ -666,6 +666,39 @@ const KPI_ROWS = [
   { id: "s6", label: "Evals on-time", fmt: (v) => `${Math.round(v)}%`, dest: "hr", basis: "right now" },
   { id: "s8", label: "Cash", fmt: (v) => `$${Math.abs(Math.round(v))}`, dest: "cashaudit" },
 ];
+/* ⭐ A GLYPH PER METRIC. Matt, Aug 20 2026: "for the key metrics I'd like some
+   glyphs in each box. It's a lot of white so I think that can definitely
+   improve."
+
+   ⚠️⚠️ IT SITS IN THE WHITE, IT DOES NOT COMPETE WITH THE NUMBER. The label is
+   top-left and the figure under it, so the empty half of every cell is the top
+   RIGHT. The glyph goes there, in the cell's own tone at low opacity, large
+   enough to fill the space and faint enough that a director still reads 29.40%
+   first. A solid icon in a tinted chip would have made six new focal points on
+   a strip whose whole job is six numbers.
+
+   ⚠️ ITS OWN MAP, NOT THE TOOL ICON MAP. `Icon` is keyed by TOOL id and its own
+   comment records what an unmapped id costs — a tile-shaped hole that reads as
+   a screen still loading. A KPI is not a tool, and borrowing that map would
+   have put six non-tool keys into the thing that guards tools.
+
+   ⚠️ EVERY ROW HAS ONE, AND A MISSING ONE DRAWS NOTHING RATHER THAN A BOX.
+   `kpiGrid.test.mjs` fails if a KPI row has no glyph. */
+const KPI_GLYPH = {
+  /* Sales: a line going up. */
+  s1: <><path d="M3 17l6-6 4 4 8-8" /><path d="M17 7h4v4" /></>,
+  /* Food: a plate with cutlery. */
+  s2: <><path d="M4 3v7a2 2 0 0 0 2 2 2 2 0 0 0 2-2V3" /><path d="M6 12v9" /><path d="M17 3c-1.7 1.2-2.5 3-2.5 5.5 0 1.9.8 3 2.5 3.5" /><path d="M17 3v18" /></>,
+  /* Labor: a person and a clock, which is what labor cost is made of. */
+  s3: <><path d="M9 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" /><path d="M2 21v-2a5 5 0 0 1 5-5h3" /><circle cx="17" cy="16" r="5" /><path d="M17 14v2l1.5 1" /></>,
+  /* Turnover: somebody walking out of a door. */
+  s5: <><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" /><path d="M10 17l5-5-5-5" /><path d="M15 12H3" /></>,
+  /* Evals on-time: a clipboard with a tick. */
+  s6: <><path d="M9 3h6v3H9z" /><path d="M15 4.5h2A2 2 0 0 1 19 6.5V20a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2h2" /><path d="M9 14l2 2 4-4" /></>,
+  /* Cash: a note. */
+  s8: <><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /><path d="M6 12h.01M18 12h.01" /></>,
+};
+
 
 // ── Company Health ring ───────────────────────────────────────────
 // A single glance number for directors: of the store metrics that ARE
@@ -4737,8 +4770,25 @@ export default function App() {
                       borderTop: `3px solid ${tone}`, borderLeft: `3px solid ${tone}`,
                       borderRadius: 12,
                       padding: "9px 12px 10px 9px", boxShadow: CARD_3D,
+                      /* ⚠️ RELATIVE, SO THE GLYPH CAN SIT IN THE EMPTY HALF.
+                         `overflow: hidden` keeps a glyph that overhangs the
+                         rounded corner inside it rather than square against it. */
+                      position: "relative", overflow: "hidden",
                     }}
                   >
+                    {/* ⭐ THE GLYPH. Top right, in the cell's own tone, faint.
+                        `aria-hidden` because it says nothing the label does not
+                        already say out loud, and a screen reader announcing
+                        "image" before every number would be noise. */}
+                    {KPI_GLYPH[row.id] && (
+                      <svg
+                        aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none"
+                        stroke={tone} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+                        style={{ position: "absolute", top: 6, right: 6, opacity: hasVal ? 0.16 : 0.10, pointerEvents: "none" }}
+                      >
+                        {KPI_GLYPH[row.id]}
+                      </svg>
+                    )}
                     <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.03em", color: "#6B7280", whiteSpace: "nowrap" }}>{row.label}</div>
                     <div style={{ fontSize: 19, fontWeight: 900, color: tone, marginTop: 3, whiteSpace: "nowrap" }}>{hasVal ? val : "—"}</div>
                     <div style={{ fontSize: 10.5, fontWeight: 700, color: "#9CA3AF", marginTop: 2, whiteSpace: "nowrap", minHeight: 13 }}>

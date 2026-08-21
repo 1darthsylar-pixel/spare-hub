@@ -1,11 +1,33 @@
 import React, { useState } from "react";
-import { programLabel } from "./storeConfig.js";
+import { programLabel, storeCfg } from "./storeConfig.js";
 
-// Small circular Peak Reachers badge for the header.
-// Uses the real logo if it exists at `src` (default /peakReachers.png in
-// the app's public folder); if that file isn't there, it falls back to a
-// built-in SVG mark so the header never shows a broken image.
-export default function PeakReachersBadge({ size = 46, src = "/peakReachers.png" }) {
+// Small circular badge for the header.
+// Uses the store's own logo if it has one; otherwise it draws a built-in SVG
+// mark, so the header never shows a broken image.
+//
+/* ⛔⛔ THE DEFAULT USED TO BE THE LITERAL `/peakReachers.png`, AND THAT IS THIS
+   STORE'S ARTWORK WRITTEN INTO SOURCE — rule 18, in the place it costs most.
+   Corrected Aug 21 2026 off issue #850.
+
+   🐛 What it did: every clone is a scrubbed snapshot, so `branding.logo` is
+   blanked there and this hardcoded default was the only thing left deciding the
+   masthead mark. Measured in `spare-hub` and `guilford-hub` the same day: both
+   carried `public/peakReachers.png` and both drew THIS restaurant's programme
+   emblem in another operator's header, on every screen, with `branding.logo`
+   sitting empty a few lines away in their own config.
+
+   ⇒ IT READS THE STORE'S OWN SETTING NOW, which is what that layer is for.
+   ⚠️ NOTHING CHANGES HERE. `branding.logo` at Gate City IS "/peakReachers.png",
+   so this store renders the identical image from the identical file. What moves
+   is WHERE the answer comes from: a setting a store can edit, instead of a
+   string only a developer can.
+   ⚠️ NO src GOES STRAIGHT TO THE MARK, rather than rendering an <img src="">
+   and waiting for onError. An empty src is not a reliable error in every
+   browser, and a store with no logo is the NORMAL state on day one — the
+   fallback has to be the plain path, not the exception path.
+   ★ The Village already solved this in its own `StoreBadge.jsx` on Aug 12 and
+   the fix never came home. That direction is the one nobody watches. */
+export default function PeakReachersBadge({ size = 46, src = storeCfg("branding.logo", "") }) {
   /* ⚠️ READ AT RENDER, NOT AT MODULE LEVEL. See the teamSite note in
      storeConfig.js. This badge is the masthead mark, so its label is the first
      thing a screen reader says about the page. */
@@ -28,7 +50,7 @@ export default function PeakReachersBadge({ size = 46, src = "/peakReachers.png"
         boxShadow: "0 1px 5px rgba(0,0,0,0.28)",
       }}
     >
-      {imgOk ? (
+      {imgOk && src ? (
         <img
           src={src}
           alt={programName}
