@@ -28,8 +28,25 @@
    mistyped label is ignored and named, never invented as a new line. */
 
 const PROFIT_LABELS = new Set(["Base Profit", "Base Operating Fee", "Net Profit"]);
+/* 🐛🐛 A BLANK COLUMN IS NOT A ZERO, AND JAVASCRIPT DISAGREES.
+
+   `Number("")` is 0 and `Number.isFinite(0)` is true, so an empty cell sailed
+   through as a real figure. Pasting
+
+       FCR 2026-08
+       actual | 84210.55 |
+
+   imported $84,210.55 of net profit on $0 of sales. Every percentage built on
+   it then divided by zero, on the screen this store reads its money from.
+
+   ⚠️ A REAL ZERO STILL IMPORTS AS ZERO. "0" is a figure somebody typed and it
+   has to keep working — refusing it would break a month with no catering, and
+   that is the same three-state argument availability.js and storeHours.js both
+   make: blank, zero and missing are three answers, not two. */
 const num = (s) => {
-  const n = Number(String(s ?? "").replace(/[$,\s]/g, ""));
+  const t = String(s ?? "").replace(/[$,\s]/g, "");
+  if (t === "") return NaN;
+  const n = Number(t);
   return Number.isFinite(n) ? n : NaN;
 };
 
