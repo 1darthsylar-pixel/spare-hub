@@ -1570,6 +1570,27 @@ const toolById = (id) => {
 };
 const colorFor = (tool) =>
   tool.color || SECTIONS.find((s) => s.tools.some((t) => t.id === tool.id))?.color || INK;
+/* ⭐⭐ SIGNING IN WITHOUT PICKING A TOOL. Matt, twice: "I still want to log in
+   without going into a tool."
+
+   ⛔ `openTool` IS THE ONLY DOOR TO THE PIN CARD, and it takes a tool. So the
+   whole sign-in flow was: tap something you may not even want, get refused,
+   type your PIN, land INSIDE that tool, and back out to reach the dashboard.
+   The signed-out header offered nothing at all.
+
+   ⇒ A tool-shaped sentinel, so the card it opens is the same card rather than a
+   second one that drifts. It is never registered in SECTIONS, never rendered as
+   a tile, and never becomes `activeTool` — `grant` drops it, which is what
+   lands somebody on the dashboard instead of in a screen.
+
+   ⚠️⚠️ IT MUST NOT GO THROUGH `canUseTool`, AND THAT IS NOT A SHORTCUT. That
+   function short-circuits on `onlyFor(person)` and answers `only.has(tool.id)`
+   — so for anybody with a narrowed view (Nick's reduced Hub is the live
+   example) an unregistered id answers FALSE, and the one person most likely to
+   be confused by the old flow could not sign in at all. Signing in is not a
+   tool grant; it is the thing that HAPPENS BEFORE one. */
+const SIGN_IN_TOOL = { id: "__signin", name: "Sign in", tier: 1, color: INK };
+const isSignIn = (t) => !!t && t.id === SIGN_IN_TOOL.id;
 
 // ── Daily-checklist helpers ──────────────────────────────────────
 const pad2 = (v) => String(v).padStart(2, "0");
@@ -3333,7 +3354,11 @@ export default function App() {
       setUser(person);
       localStorage.setItem(USER_KEY, JSON.stringify(person));
     }
-    setActiveTool(pinTool);
+    /* ⚠️ THE SENTINEL IS NOT A SCREEN. Opening it would put an unregistered id
+       through the tile chrome, and `Icon` renders an unmapped id as an empty
+       square — a tile-shaped hole that reads as a screen still loading. Null
+       lands on the dashboard, which is the whole point of the button. */
+    setActiveTool(isSignIn(pinTool) ? null : pinTool);
     setPinTool(null);
   };
 
@@ -3477,7 +3502,7 @@ export default function App() {
         const m = matches[0];
         const role = effectiveRole(m.id, rm[m.id] || m.role);
         const t = roleTier(role);
-        if (canUseTool(pinTool, t, { id: m.id, role })) {
+        if (isSignIn(pinTool) || canUseTool(pinTool, t, { id: m.id, role })) {
           // slackId is passed through so TeamDirectory (and anything else
           // gating on identity) can key off the Slack user ID rather than a
           // display-name string. Null until the HR roster carries the field.
@@ -4512,6 +4537,31 @@ export default function App() {
               </div>
             </div>
           </div>
+          {/* ⭐⭐ THE WAY IN, ON THE SCREEN SOMEBODY LANDS ON. Matt, twice:
+              "I still want to log in without going into a tool."
+
+              🐛 THE SIGNED-OUT HEADER HAD NOTHING ON IT AT ALL. Every control
+              here sits behind `signedIn`, so a person opening the Hub saw the
+              store name and a list of sections and no way to identify
+              themselves. The only door was to tap a tool, be refused, type a
+              PIN, and land inside a tool they may not have wanted — then back
+              out to reach the dashboard.
+
+              ⚠️ IT OPENS THE SAME CARD, not a second one. A separate sign-in
+              screen is two places to keep the name step, the ambiguous-PIN
+              message and the lockout copy in step, and they would drift. */}
+          {!signedIn && (
+            <button
+              onClick={() => { setPin(""); setPinErr(""); setNeedName(false); setPinNameId(""); setNameChoices([]); setNameQuery(""); setPinTool(SIGN_IN_TOOL); }}
+              style={{
+                background: "rgba(255,255,255,0.16)", border: "1px solid rgba(255,255,255,0.32)",
+                color: "#fff", borderRadius: 999, padding: "7px 16px",
+                fontSize: 13, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap",
+              }}
+            >
+              Sign in
+            </button>
+          )}
           {signedIn && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             {/* ★ BRI'S CALENDAR ICON, by the sign-in name. Opens the Calendar
@@ -6584,19 +6634,31 @@ export default function App() {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span
-                style={{
-                  width: 40, height: 40, borderRadius: 10,
-                  background: `${colorFor(pinTool)}14`,
-                  display: "inline-flex", alignItems: "center", justifyContent: "center",
-                }}
-              >
-                <Icon id={pinTool.id} color={colorFor(pinTool)} />
-              </span>
+              {/* ⚠️ NO ICON FOR THE SENTINEL. `Icon` is keyed by tool id and its
+                  own note records what an unmapped one costs: an empty square
+                  that reads as something still loading. */}
+              {!isSignIn(pinTool) && (
+                <span
+                  style={{
+                    width: 40, height: 40, borderRadius: 10,
+                    background: `${colorFor(pinTool)}14`,
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  }}
+                >
+                  <Icon id={pinTool.id} color={colorFor(pinTool)} />
+                </span>
+              )}
               <div>
-                <div style={{ fontSize: 15.5, fontWeight: 800, color: INK }}>{pinTool.name}</div>
+                <div style={{ fontSize: 15.5, fontWeight: 800, color: INK }}>
+                  {isSignIn(pinTool) ? "Sign in" : pinTool.name}
+                </div>
                 <div style={{ fontSize: 12, color: "#6B7280" }}>
-                  Requires {TIER_NAMES[pinTool.tier]} access.
+                  {/* ⚠️ "Requires Director access" ON A PLAIN SIGN-IN IS A LIE,
+                      and a discouraging one: this card takes anybody's PIN and
+                      gives them whatever their own access is. */}
+                  {isSignIn(pinTool)
+                    ? "Type your PIN. You will land on your dashboard."
+                    : `Requires ${TIER_NAMES[pinTool.tier]} access.`}
                 </div>
               </div>
             </div>
