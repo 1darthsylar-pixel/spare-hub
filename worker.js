@@ -1206,6 +1206,36 @@ async function resolveChannel(env, nameOrId) {
  * ⚠️ Everything else still runs for real — status keys are written, storage is
  * read — so a quiet run is a true rehearsal, not a simulation.
  */
+/* A channel post that cannot take the job down with it.
+   ⛔⛔ WHY THIS MATTERS MORE HERE THAN AT THE ORIGIN. `postToSlackChannel`
+   writes the Hub copy FIRST, above every return and every throw, so by the
+   time Slack is even attempted the message is already delivered and readable.
+   A throw after that point kills a job whose work is DONE.
+   🐛 Measured at the origin store, Aug 21 2026: `ops-recap` under Failing on
+   the Report Card every night, with "Slack channel not found or bot not
+   invited", while its announcement had landed perfectly. Matt: "Because we are
+   moving from slack to hub pushes can't this be fixed?" */
+async function postChannelSoft(env, channelName, text) {
+  try {
+    await postToSlackChannel(env, channelName, text);
+    return { ok: true };
+  } catch (e) {
+    const why = String((e && e.message) || e);
+    console.log(`[channel down] ${channelName}: ${why}; the Hub copy still went`);
+    /* ⚠️ RECORDED, NOT JUST LOGGED. A console line dies with the request.
+       `noteJobRun` reads this into the run record, so "the Hub got it, Slack
+       did not" is a fact somebody can look up tomorrow. Capped, and wrapped,
+       because recording must never be the thing that breaks a delivered job. */
+    try {
+      if (env) {
+        if (!Array.isArray(env.__slackDown)) env.__slackDown = [];
+        if (env.__slackDown.length < 5) env.__slackDown.push(`#${channelName}: ${why}`);
+      }
+    } catch { /* nothing here is worth failing a delivered message over */ }
+    return { ok: false, error: why, channel: channelName };
+  }
+}
+
 async function postToSlackChannel(env, channelName, text) {
   /* ⚠️⚠️ THIS EARLY RETURN IS THE ONE THAT UNBREAKS THE SEVENTEEN JOBS, and it
      has to sit ABOVE resolveChannel rather than inside sendSlack. resolveChannel
@@ -2255,7 +2285,7 @@ async function runBoilOutFry(env) {
   const dow = now.getDay();
   const today = isoOfD(now);
   if (dow === 1) {
-    await postToSlackChannel(env, BOIL_CHANNEL,
+    await postChannelSoft(env, BOIL_CHANNEL,
       `*Boil Out — Primary Fry*\nPlease boil out the *primary fry* before 11am today.\n\n<!channel>`);
     const p = await pushBoilOut(env, "Boil out the primary fry", "Before 11am today.");
     return { posted: "primary-fry", date: today, pushed: p };
@@ -2267,7 +2297,7 @@ async function runBoilOutFry(env) {
     // rather than wrapping round.
     const onCycle = Number.isInteger(weeks) && weeks >= 0 && weeks % 2 === 0;
     if (!onCycle) return { skipped: "off-cycle-tuesday", date: today, weeksFromAnchor: weeks };
-    await postToSlackChannel(env, BOIL_CHANNEL,
+    await postChannelSoft(env, BOIL_CHANNEL,
       `*Boil Out — Secondary Fry*\nPlease boil out the *secondary fry* before 11am today.\n\n<!channel>`);
     const p = await pushBoilOut(env, "Boil out the secondary fry", "Before 11am today.");
     return { posted: "secondary-fry", date: today, weeksFromAnchor: weeks, pushed: p };
@@ -2284,7 +2314,7 @@ async function runBoilOutHenny(env) {
   const n = HENNY_BY_DOW[dow];
   if (!n) return { skipped: "weekend", date: today };
   if (!boilFirstFullWeek(now)) return { skipped: "not-first-full-week", date: today };
-  await postToSlackChannel(env, BOIL_CHANNEL,
+  await postChannelSoft(env, BOIL_CHANNEL,
     `*Boil Out — Henny ${n}*\nClosing leaders: please complete the *Henny ${n}* boil out between 5 and close tonight.\n\n<!channel>`);
   // It already says "Closing leaders" — so tell the closing leaders, not the room.
   const p = await pushBoilOut(env, `Henny ${n} boil out`, "Between 5 and close tonight.", true);
@@ -2542,7 +2572,7 @@ async function runCleaningSummary(env) {
      for a report that is now one person's job. The post stays as the record —
      push and DM only reach people who have enabled them — but it no longer
      interrupts everybody to say a task is outstanding. */
-  await postToSlackChannel(env, CHANNELS.brand, body);
+  await postChannelSoft(env, CHANNELS.brand, body);
 
   /* ⚠️ EACH DELIVERY IN ITS OWN TRY. A failed DM must not stop the push, and
      neither must stop the channel post above, which already happened. */
@@ -2715,7 +2745,7 @@ async function runWasteInputCheck(env) {
      Accountability belongs with the function.
      ⚠️ THE OWNER DM IS GONE, not kept alongside. Matt is in that channel, so
      keeping both would have pinged him twice for one fact. */
-  await postToSlackChannel(env, CHANNELS.inventory, text);
+  await postChannelSoft(env, CHANNELS.inventory, text);
   return { date: target, logged: status.logged.length, missing: status.missing, to: CHANNELS.inventory };
 }
 
@@ -2778,7 +2808,7 @@ async function runWasteReport(env) {
     `\n\n*Donations:*\n${donLines.length ? donLines.join("\n") : "None logged this week."}` +
     `\n\n<!channel>`;
 
-  await postToSlackChannel(env, CHANNELS.inventory, text);
+  await postChannelSoft(env, CHANNELS.inventory, text);
 
   /* ★ AND AS AN ANNOUNCEMENT LEADERS MUST CONFIRM. Same reasoning as the
      cleaning summary directly above: the channel post is untouched, this is in
@@ -2821,7 +2851,7 @@ function orderCalcFor(dayName, entry) {
 async function runAuditOrderCalc(env) {
   const entries = (await sbGet(env, AUDIT_KEY)) || [];
   if (!entries.length) {
-    await postToSlackChannel(env, CHANNELS.opsSuccess, "*Change Fund Order* — no audit entries on file yet, nothing to calculate.");
+    await postChannelSoft(env, CHANNELS.opsSuccess, "*Change Fund Order* — no audit entries on file yet, nothing to calculate.");
     return;
   }
   /* ⚠️ A SAFE COUNT DATED IN THE FUTURE IS NOT A COUNT (Aug 9 2026 sweep,
@@ -2845,7 +2875,7 @@ async function runAuditOrderCalc(env) {
   const future = dated.filter((e) => e.date > todayIso);
   const usable = dated.filter((e) => e.date <= todayIso);
   if (!usable.length) {
-    await postToSlackChannel(env, CHANNELS.opsSuccess,
+    await postChannelSoft(env, CHANNELS.opsSuccess,
       `*Change Fund Order* — nothing usable on file.` +
       (future.length ? ` ${future.length} entr${future.length === 1 ? "y is" : "ies are"} dated in the future and were ignored. Check the Cash Audit ledger.` : ""));
     return;
@@ -2869,7 +2899,7 @@ async function runAuditOrderCalc(env) {
      The channel post STAYS as the shared record — it is the audit trail and
      the fallback if the DM below fails to resolve — it just stops being an
      alarm on 35 phones before dawn. */
-  await postToSlackChannel(env, CHANNELS.opsSuccess, text);
+  await postChannelSoft(env, CHANNELS.opsSuccess, text);
 
   // …and the person who actually owns it gets it directly.
   try {
@@ -3239,7 +3269,7 @@ async function runFoodSafetyReminder(env) {
     `Don't forget to run today's walkthrough. Rest of today's to-dos:\n\n` +
     todos.join("\n") +
     `\n\n<!channel>`;
-  await postToSlackChannel(env, CHANNELS.brand, text);
+  await postChannelSoft(env, CHANNELS.brand, text);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -3288,7 +3318,7 @@ async function runFoodSafetyWeekly(env) {
 
   if (wk.length === 0) {
     const body = "No walkthroughs were recorded this week.";
-    await postToSlackChannel(env, CHANNELS.brand,
+    await postChannelSoft(env, CHANNELS.brand,
       `*Weekly Food Safety Report — ${start} to ${end}*\n${body}\n\n<!channel>`);
     if (R) {
       await sendEmail(env, R.to, `Weekly Food Safety Report — ${start} to ${end}`,
@@ -3332,7 +3362,7 @@ async function runFoodSafetyWeekly(env) {
   const worstLine = worst ? `\n\n:mag: Most catches: ${worst.by || "—"} — ${worst.n} found${worst.date ? ` on ${worst.date}` : ""}` : "";
   const closer = "\n\n_Every catch is a problem fixed before it costs us. Thanks for staying on these._";
 
-  await postToSlackChannel(env, CHANNELS.brand,
+  await postChannelSoft(env, CHANNELS.brand,
     `*Weekly Food Safety Report — ${start} to ${end}*\n${headline}${doerLine}\n\n*Caught this week:*\n${tierLines}${worstLine}${closer}\n\n<!channel>`);
 
   /* ⚠️ GUARDED, LIKE THE BRANCH ABOVE. `R` can be null now that there is no
@@ -3780,7 +3810,7 @@ async function runFoodSafetyAssign(env) {
     : noMap
       ? `*Food Safety Walkthrough — ${dayName} ${today}*\nCouldn't work out who is eligible — the roster hasn't reached this job yet. Please assign someone manually and tell Matt.\n\n<!channel>`
       : `*Food Safety Walkthrough — ${dayName} ${today}*\nNo leader at Senior Trainer or above is on the board today, so nobody could be assigned. Please assign someone manually.\n\n<!channel>`;
-  await postToSlackChannel(env, CHANNELS.brand, text);
+  await postChannelSoft(env, CHANNELS.brand, text);
 
   /* `mentioned` makes a silent fallback visible in the job history — otherwise
      "they never get pinged" looks identical to "the job didn't run". */
@@ -4492,7 +4522,7 @@ async function runTrainerTasksSummary(env) {
        0-of-11 trainers reachable in the first place. Removing them to satisfy a
        reading of one sentence would quietly undo that, so they stay and she has
        been told they stay. */
-    await postToSlackChannel(env, CH_TRAINERS, slackText);
+    await postChannelSoft(env, CH_TRAINERS, slackText);
   }
 
   /* ★ PUSH EACH TRAINER THEIR OWN TASK. The job already knows exactly whose
@@ -4832,7 +4862,7 @@ async function runOpsChecklistRecap(env) {
   } else {
     text = `*Ops Checklists — all ${total} signed off today.* ✅`;
   }
-  await postToSlackChannel(env, CHANNELS.opsSuccess, text);
+  await postChannelSoft(env, CHANNELS.opsSuccess, text);
 
   /* ── Tell the leader whose shift it is ─────────────────────────────
      Matt's rule: "for the checklist and cleaning lists I want it to assign by
@@ -5119,7 +5149,7 @@ async function runKiaMileageReminder(env) {
   if (now.getDate() !== target) {
     return { skipped: "not the last business day", today: isoOfD(now), posts_on: target };
   }
-  await postToSlackChannel(env, CH_CATERING,
+  await postChannelSoft(env, CH_CATERING,
     `*End of the month — two things for the Kia*\n` +
     `• A photo of the current mileage\n` +
     `• The oil change status\n\n` +
@@ -5154,7 +5184,7 @@ async function runSupplyReminder(env) {
       `Supply Central has no sign-out log at all, so the dashboard cannot tell whether an order is overdue.\n` +
       `Recording one order in the Hub → Supply Central starts the ${SUPPLY_STALE_DAYS}-day clock and this reminder goes quiet until it is due again.`;
 
-  await postToSlackChannel(env, SUPPLY_CHANNEL, text);
+  await postChannelSoft(env, SUPPLY_CHANNEL, text);
 
   /* Push as well as Slack — Matt, Jul 29: "that's the purpose of the push
      notifications, for as much as possible." Slack is the record, push is
@@ -5716,6 +5746,13 @@ async function noteJobRun(env, job, label, startedAt, res) {
       for (const k of ["skipped", "reason", "posted", "sent", "findings", "reachable", "changed", "note", "error", "dp", "remaining", "rows"]) {
         if (body[k] !== undefined) detail[k] = typeof body[k] === "string" ? String(body[k]).slice(0, 160) : body[k];
       }
+    }
+    /* ⚠️ THE SLACK LEG, IF IT WENT DOWN DURING THIS RUN. Read off `env` rather
+       than the body because no job branch would otherwise carry it. The run
+       stays `ok` — the Hub copy is the delivery — but "Slack did not take it"
+       must not vanish with the log line. */
+    if (env && Array.isArray(env.__slackDown) && env.__slackDown.length) {
+      detail.slackDown = env.__slackDown.slice(0, 5);
     }
     await sbSet(env, jobRunKey(label || job), {
       job, at: new Date().toISOString(), ok, status: res.status,
@@ -6704,7 +6741,7 @@ async function runIpoWeeklyReminder(env) {
     `Directors: ${done}/${total} action items checked off this week. Still open:\n` +
     openCats.join("\n") +
     `\n\nCheck them off in the Hub \u2192 IPO Action Items.\n<!channel>`;
-  await postToSlackChannel(env, IPO_DIRECTORS_CHANNEL, text);
+  await postChannelSoft(env, IPO_DIRECTORS_CHANNEL, text);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -6741,7 +6778,7 @@ async function runDailyAiSummary(env) {
      still lands in the channel; it simply no longer notifies everyone.
      Anyone who wants the alert can follow the channel or the digest reaches
      directors as a per-person AI summary already. */
-  await postToSlackChannel(env, CHANNELS.opsSuccess, text);
+  await postChannelSoft(env, CHANNELS.opsSuccess, text);
 }
 
 /* ═══ TEAM EMAILS — SERVER-SIDE ONLY (Jul 31 2026) ═══════════════════════
@@ -7549,7 +7586,7 @@ async function runTeamScoreboard(env, forced) {
      a SECOND announcement for the same week. */
   let res = null, slackWhy = "";
   try {
-    res = await postToSlackChannel(env, TEAM_CHANNEL, text);
+    res = await postChannelSoft(env, TEAM_CHANNEL, text);
   } catch (e) {
     slackWhy = String(e && e.message ? e.message : e).slice(0, 120);
   }
