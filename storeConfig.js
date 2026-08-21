@@ -1126,6 +1126,23 @@ const isPlain = (v) => !!v && typeof v === "object" && !Array.isArray(v);
    store's config has no `doors` section yet. When it gains one, add the path —
    that store lost every opening time a person typed until this was fixed. */
 const OPEN_KEY_MAPS = new Set([
+  /* ⛔⛔ WITHOUT THIS, EVERY PER-HOLIDAY SETTING A STORE SAVES IS SILENTLY
+     DISCARDED ON THE NEXT LOAD. Added Aug 21 2026, before the screen that
+     writes it was built, because the screen would have looked like it worked.
+
+     `mergeDeep` only lets an override fill a key the defaults already know, so
+     a typo cannot invent a setting nothing reads. `holidays.byKey` is the
+     opposite shape: its KEYS are the store's answer — `laborDay`, `christmasEve`
+     — and a store may name any holiday, including ones the shipped default has
+     no row for.
+
+     🐛 MEASURED AT THE ORIGIN BEFORE THIS LINE EXISTED: saving
+     `{ laborDay: { closed: true } }` came back `undefined`, while
+     `christmasEve` survived only because the default happened to carry a row
+     for it. So five holidays saved and the other six vanished, with no error
+     and the screen showing the change until the page reloaded.
+     ⚠️ SAME BUG `hr.extraTitles` IS ALREADY HERE FOR, one entry down. */
+  "holidays.byKey",
   "hr.extraTitles",
 ]);
 
