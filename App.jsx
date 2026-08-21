@@ -512,6 +512,27 @@ const LEAD = "#3730A3"; // Leadership section accent (indigo — same blue famil
    there, and `tileGrid.test.mjs` fails on any tile grid that spells its own.
    ⚠️ The column COUNT does not change at this page width: 4 columns either way
    (4x240+3x12 = 1008, and 5 would need 1248). Only the rhythm was unified. */
+/* ⭐⭐ ONE PAGE WIDTH, NAMED ONCE.
+
+   Matt, Aug 19 2026, off a laptop screenshot: "I would like the side by side if
+   possible for the more compact look."
+
+   The page was capped at 860. The tile grid is `auto-fill minmax(240px, 1fr)`
+   with a 12px gap, so 860 fits exactly THREE columns and the rest of a laptop
+   screen was white — more rows than necessary, and more scrolling. At 1200 the
+   same grid fits FOUR.
+
+   ⚠️⚠️ THE FAILURE THIS GUARDS IS NOT THE NUMBER, IT IS THE PAIR. The header and
+   the page body are two separate `maxWidth` declarations wrapping two separate
+   blocks, and if they drift the store name stops lining up with the content
+   under it — a misalignment that looks like a rendering bug and shows in no
+   diff. `pageWidth.test.mjs` fails if they ever disagree, which is why this is a
+   named constant rather than 1200 typed twice.
+
+   ⚠️ IT IS A CAP, NOT A WIDTH. Nothing is stretched; a narrow window is
+   unaffected. */
+const PAGE_MAX = 1200;
+
 const TILE_GRID = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 };
 
 const INK = "#13293F";
@@ -4557,7 +4578,7 @@ export default function App() {
         </div>
       )}
       <div style={{ position: "relative", zIndex: 1, background: INKGRAD, color: "#fff", padding: "46px 20px 18px", borderBottom: `3px solid ${RED}` }}>
-        <div style={{ maxWidth: 860, margin: "0 auto", display: "flex", flexWrap: "wrap", alignItems: "flex-end", justifyContent: "space-between", gap: 12, rowGap: 10 }}>
+        <div style={{ maxWidth: PAGE_MAX, margin: "0 auto", display: "flex", flexWrap: "wrap", alignItems: "flex-end", justifyContent: "space-between", gap: 12, rowGap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
             <PeakReachersBadge size={42} />
             <div style={{ minWidth: 0 }}>
@@ -4667,7 +4688,7 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 860, margin: "0 auto", padding: "16px 14px 0", position: "relative", zIndex: 1 }}>
+      <div style={{ maxWidth: PAGE_MAX, margin: "0 auto", padding: "16px 14px 0", position: "relative", zIndex: 1 }}>
 
         {/* ── Search ──────────────────────────────────────────────── */}
         {!openSection && signedIn && (

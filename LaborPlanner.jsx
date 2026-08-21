@@ -49,7 +49,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 /* The one raised look, shared with every tool — see cardStyle.js. */
-import { CARD_3D, cardSurface, CARD_3D_SOFT, accentEdge } from "./cardStyle.js";
+import { CARD_3D, cardSurface, CARD_3D_SOFT, accentEdge, notePanel } from "./cardStyle.js";
 import { kvGet, kvSet, kvGetResult, publishSharedRows, hubToken } from "./store";
 import PasteMonth from "./PasteMonth.jsx";
 import { parseDaypartPaste, parseLaborBenchPaste } from "./pasteImports.js";
@@ -853,7 +853,7 @@ function DaypartLabor({ tierCfg, onNonOpsSaved, onOpsSaved, onMonthsSaved }) {
 
           {/* monthly nudge */}
           {!edit && stale && (
-            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", backgroundColor: "#FBF3DC", backgroundImage: cardSurface(AMBER, 0.4), border: "1px solid #E7D08A", ...accentEdge(AMBER, 3), boxShadow: CARD_3D_SOFT, borderRadius: 12, padding: "11px 14px", marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", ...notePanel(AMBER, "#E7D08A", "#FBF3DC"), borderRadius: 12, padding: "11px 14px", marginBottom: 12 }}>
               <div style={{ flex: "1 1 auto", minWidth: 170 }}>
                 <div style={{ fontSize: 14, fontWeight: 800, color: AMBER }}>New month {"—"} add {dpMonthLabel(dpNowYm())} daypart labor</div>
                 <div style={{ fontSize: 11.5, color: GRAY, marginTop: 2 }}>Latest on file is {dpMonthLabel(latestId)}. Pull the CFA Signal Labor Productivity table and drop it in.</div>
@@ -876,7 +876,7 @@ function DaypartLabor({ tierCfg, onNonOpsSaved, onOpsSaved, onMonthsSaved }) {
               </div>
 
               {lbFailed && (
-                <div style={{ backgroundColor: "#FFFBEB", backgroundImage: cardSurface("#B45309", 0.4), border: `1px solid #F59E0B`, ...accentEdge("#B45309", 3), boxShadow: CARD_3D_SOFT, color: "#92400E", borderRadius: 9, padding: "8px 11px", fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+                <div style={{ ...notePanel("#B45309", "#F59E0B", "#FFFBEB"), color: "#92400E", borderRadius: 9, padding: "8px 11px", fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
                   This did not load, so importing is off. Refresh the page.
                 </div>
               )}
@@ -968,7 +968,7 @@ function DaypartLabor({ tierCfg, onNonOpsSaved, onOpsSaved, onMonthsSaved }) {
 
           {/* standing-ops settings */}
           {opsEdit && (
-            <div style={{ backgroundColor: BG, backgroundImage: cardSurface(NAVY, 0.4), border: `1px solid ${LINE}`, ...accentEdge(NAVY, 3), boxShadow: CARD_3D_SOFT, borderRadius: 10, padding: 12, marginBottom: 12 }}>
+            <div style={{ ...notePanel(NAVY, LINE, BG), borderRadius: 10, padding: 12, marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: NAVY, marginBottom: 2 }}>Standing operational hours per person, per weekday (Mon–Fri)</div>
               <div style={{ fontSize: 11, color: GRAY, marginBottom: 8 }}>
                 People who work operations but are never scheduled on the board. These hours ARE counted
@@ -1003,7 +1003,7 @@ function DaypartLabor({ tierCfg, onNonOpsSaved, onOpsSaved, onMonthsSaved }) {
 
           {/* non-ops settings */}
           {cfgEdit && (
-            <div style={{ backgroundColor: BG, backgroundImage: cardSurface(NAVY, 0.4), border: `1px solid ${LINE}`, ...accentEdge(NAVY, 3), boxShadow: CARD_3D_SOFT, borderRadius: 10, padding: 12, marginBottom: 12 }}>
+            <div style={{ ...notePanel(NAVY, LINE, BG), borderRadius: 10, padding: 12, marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: NAVY, marginBottom: 2 }}>Non-op hours per person, per weekday (Mon–Fri)</div>
               <div style={{ fontSize: 11, color: GRAY, marginBottom: 8 }}>
                 These hours are stripped out before the operational $/hr is worked out. Anyone salaried or off the floor belongs here.
@@ -1072,7 +1072,7 @@ function DaypartLabor({ tierCfg, onNonOpsSaved, onOpsSaved, onMonthsSaved }) {
                 const over = m.clockedProd >= m.top20Prod;
                 const diff = Math.abs(m.clockedProd - m.top20Prod);
                 return (
-                  <div style={{ backgroundColor: BG, backgroundImage: cardSurface(NAVY, 0.4), ...accentEdge(NAVY, 3), boxShadow: CARD_3D_SOFT, borderRadius: 12, padding: "14px 15px", marginBottom: 14 }}>
+                  <div style={{ ...notePanel(NAVY, LINE, BG), borderRadius: 12, padding: "14px 15px", marginBottom: 14 }}>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
                       <span style={{ fontSize: 28, fontWeight: 800, color: NAVY, letterSpacing: "-0.5px" }}>
                         ${m.clockedProd.toFixed(2)}
@@ -1793,7 +1793,7 @@ export default function LaborPlanner() {
               onChange={(e) => setDayField(selected, "target", e.target.value)} />
           </div>
 
-          <div style={{ backgroundColor: BG, backgroundImage: cardSurface(NAVY, 0.4), ...accentEdge(NAVY, 3), boxShadow: CARD_3D_SOFT, borderRadius: 10, padding: "8px 12px", margin: "10px 0", fontSize: 13 }}>
+          <div style={{ ...notePanel(NAVY, LINE, BG), borderRadius: 10, padding: "8px 12px", margin: "10px 0", fontSize: 13 }}>
             <b>Budget: {fmtH(sel.budget.total)} h</b>
             <span style={{ color: GRAY }}> all paid</span>
             {/* The board figure is the one he schedules to. Showing only the
@@ -2208,7 +2208,7 @@ export default function LaborPlanner() {
             </div>
 
             {/* Preview — what this tier implies at real volumes */}
-            <div style={{ backgroundColor: BG, backgroundImage: cardSurface(NAVY, 0.4), ...accentEdge(NAVY, 3), boxShadow: CARD_3D_SOFT, borderRadius: 10, padding: "8px 12px", margin: "6px 0 14px", fontSize: 12.5, color: GRAY }}>
+            <div style={{ ...notePanel(NAVY, LINE, BG), borderRadius: 10, padding: "8px 12px", margin: "6px 0 14px", fontSize: 12.5, color: GRAY }}>
               <b style={{ color: INK }}>At this tier:</b>{" "}
               {[28000, 30000, 34000].map((v) => (
                 <span key={v} style={{ marginRight: 10 }}>
