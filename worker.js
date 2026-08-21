@@ -4891,7 +4891,25 @@ async function runRetentionPurge(env, opts) {
   try {
     const rec = await sbGetStrict(env, STORE_CONFIG_KEY);
     saved = rec && typeof rec === "object" && !Array.isArray(rec) ? rec.settings : null;
-  } catch { /* no saved settings: the defaults below stand */ }
+  } catch {
+    /* ⛔⛔ A REFUSED READ IS NOT "no saved settings", AND THIS IS THE ONE JOB
+       IN THE HUB THAT DESTROYS RECORDS. `sbGetStrict` returns null when the key
+       genuinely is not there and THROWS when the read was refused; catching
+       both here collapsed them, so a dropped read fell back to the built-in
+       numbers and purged on them. A store that typed 3650 days for escalations
+       would have had years 1 to 10 deleted that night, on a schedule, silently,
+       and the run would have stamped ok.
+       ⇒ Absent still means "nobody has typed a number", which is a real answer
+       and still gets the defaults. Refused means we do not know this store's
+       policy, and you cannot delete on a policy you could not read.
+
+       ⚠️⚠️ IT THROWS RATHER THAN RETURNING AN ERROR OBJECT, for the reason
+       written at `runBackup` in this same file: the dispatcher wraps whatever a
+       job RETURNS in `ok: true`, so an error object here would stamp a good
+       run, move the heartbeat, and report healthy on the night it deleted
+       nothing. A throw is the only thing the monitoring can see. */
+    throw new Error("could not read this store's retention settings; refusing to delete anything on default numbers");
+  }
   const savedRet = (saved && typeof saved.retention === "object" && saved.retention) || {};
   const daysFor = (name) => {
     const raw = savedRet[name];
