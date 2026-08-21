@@ -42,6 +42,10 @@ import { laborTrust } from "./laborWindow.js";
 import { templatesFor, PERIODS as BOARD_PERIODS } from "./stationTemplates.js";
 /* Leaf, imports nothing. dtShareOfFoh reads Sales Allocation's own day shape. */
 import { dtShareOfFoh, splitFohHours } from "./dayparts.js";
+/* ⚠️ LEAVES ONLY. Both import nothing but each other, so pulling them in here
+   does not drag config or React into the engine. */
+import { holidaysFrom, holidaysForYear } from "./usHolidays.js";
+import { holidayDefault } from "./holidayPolicy.js";
 
 /* The loud door-check described above. */
 function requireGet(get) {
@@ -236,7 +240,10 @@ export const mergeCfg = (c) => ({
 });
 
 /* ---------------- shared loaders (used by exports below) ---------------- */
-export async function loadMonthBasis(ym, get) {
+/* ⚠️ `policy` IS PASSED IN, NOT READ. This file is the engine and it has no
+   store config; the caller already holds it. Optional, so every existing
+   caller keeps working untouched. */
+export async function loadMonthBasis(ym, get, policy) {
   requireGet(get);
   const [p, c, tiers, a, b] = await Promise.all([
     get(plannerKey(ym)).catch(() => null),
@@ -245,16 +252,137 @@ export async function loadMonthBasis(ym, get) {
     loadSalesMonth(shiftMonth(ym, -1), get),
     loadSalesMonth(shiftMonth(ym, -2), get),
   ]);
-  return { p, cfg: mergeCfg(c), tierCfg: tiers, wk: weekdayTwoMonthAvg(a, b) };
+  /* ⭐ THE HOLIDAY SALES BASIS, FOLDED IN HERE RATHER THAN AT EIGHT CALL SITES.
+     `forecastFor` reads `p.holiday`, so every consumer of this basis — the
+     month card, the daypart DMs, the Schedule Builder's budget — inherits it
+     without knowing it exists.
+
+     ⚠️ THE POLICY IS OPTIONAL AND ITS ABSENCE IS SILENT. A store that has set
+     no holiday hours gets `{}` and the engine behaves exactly as it did. */
+  const holiday = await holidayBasisFor(ym, policy, get);
+  return { p: { ...(p || {}), holiday }, cfg: mergeCfg(c), tierCfg: tiers, wk: weekdayTwoMonthAvg(a, b) };
+}
+
+/* iso → expected sales, for every holiday inside `ym` this store has a figure
+   for. Exported so a test can drive it without a store.
+
+   ⭐⭐ WHAT THIS HOLIDAY ACTUALLY TOOK LAST YEAR BEATS ANY TYPED DEFAULT.
+   Matt, Aug 21 2026: "you actually have the holiday sales in my labor planner
+   history." He is right, and the history is far better than the placeholder.
+
+   ⛔ MEASURED AGAINST THIS STORE'S OWN 20 MONTHS OF RECORDS, not reasoned. The
+   single typed figure was wrong for every holiday and wrong in both directions:
+
+       Christmas Eve     real 22,560   flat 14,000    -38%
+       New Year's Eve    real 18,265   flat 14,000    -23%
+       Independence Day  real 16,435   flat 14,000    -15%
+       Labor Day         real 16,153   flat 14,000    -13%
+       Memorial Day      real 12,446   flat 14,000    +12%
+       New Year's Day    real  8,807   flat 14,000    +59%
+
+   ⇒ One number cannot describe six days that range from 8.8k to 22.6k. Under-
+   budgeting Christmas Eve by 38% is a real staffing problem on the busiest week
+   of the year, and over-budgeting New Year's Day by 59% is money.
+
+   ★ AND IT KEEPS ITSELF CURRENT. Every holiday the store trades becomes next
+   year's basis with nobody typing anything, which is what a typed default can
+   never do — a number entered once rots quietly from the day it is entered.
+
+   THE ORDER, and each step exists for a reason:
+     1. the store says CLOSED        → 0. A fact about the store beats any
+                                       history; last year's figure would budget
+                                       a crew for a shut door.
+     2. what this holiday really took → the same holiday key one year back,
+                                       totalled from that month's own record.
+     3. the store's typed baseSales   → the fallback for a holiday with no
+                                       history: a new store, or one this store
+                                       has not traded before.
+     4. nothing                       → falls through to the weekday average,
+                                       exactly as a store with no policy does.
+
+   ⚠️ A ZERO IN THE HISTORY IS NOT A BASIS. A holiday the store was CLOSED for
+   last year records 0, and if the store opens this year that 0 would budget
+   nobody. Step 2 only accepts a figure above zero, so a newly-traded holiday
+   falls to the typed default rather than to nothing.
+   ⚠️ ONE EXTRA READ PER PRIOR-YEAR MONTH, and only for a month that has a
+   holiday in it. The months are de-duplicated first, so a month with three
+   holidays in it still costs one read, and a month with none costs nothing.
+   ⚠️ A FAILED READ IS NOT A ZERO. `loadSalesMonth` already answers null on a
+   throw, and null falls to step 3 — the typed default — rather than pretending
+   the store took nothing. */
+export async function holidayBasisFor(ym, policy, get) {
+  const out = {};
+  if (!policy) return out;
+  const m = String(ym || "").match(/^(\d{4})-(\d{2})$/);
+  if (!m) return out;
+  const from = `${m[1]}-${m[2]}-01`;
+
+  /* Which holidays land in this month, and what each was called a year ago. */
+  const here = [];
+  for (const h of holidaysFrom(from, 24)) {
+    if (h.iso.slice(0, 7) !== `${m[1]}-${m[2]}`) continue;
+    const row = holidayDefault(policy, h.iso);
+    if (!row) continue;
+    /* ⚠️ A CLOSED DAY TAKES NOTHING, and that is a figure, not a gap. Leaving
+       it out would fall through to the weekday average and budget a full crew
+       for Christmas Day. */
+    if (row.closed) { out[h.iso] = 0; continue; }
+    const y = Number(h.iso.slice(0, 4));
+    const last = holidaysForYear(y - 1).find((p) => p.key === h.key);
+    here.push({ iso: h.iso, row, lastIso: last ? last.iso : null });
+  }
+  if (!here.length) return out;
+
+  /* ⚠️ DE-DUPLICATED BEFORE READING. December carries Christmas Eve, Christmas
+     Day and New Year's Eve; all three look back at the same month. */
+  const months = [...new Set(here.map((x) => x.lastIso).filter(Boolean).map((iso) => iso.slice(0, 7)))];
+  const recs = {};
+  if (typeof get === "function") {
+    await Promise.all(months.map(async (mm) => { recs[mm] = await loadSalesMonth(mm, get); }));
+  }
+
+  for (const x of here) {
+    const rec = x.lastIso ? recs[x.lastIso.slice(0, 7)] : null;
+    const was = rec && rec.days ? dayTotal(rec.days[x.lastIso]) : 0;
+    if (was > 0) { out[x.iso] = was; continue; }
+    if (x.row.baseSales != null) out[x.iso] = x.row.baseSales;
+  }
+  return out;
 }
 
 /* Forecast for one ISO day: per-day override, else 2-month weekday avg. */
 export function forecastFor(iso, p, wk) {
   const d = (p && p.days && p.days[iso]) || {};
+  /* A figure somebody typed for this day always wins. */
+  if (d.forecast !== undefined && d.forecast !== "") return Number(d.forecast) || 0;
+
+  /* ⭐⭐ A HOLIDAY CANNOT FORECAST OFF AN ORDINARY WEEKDAY. Matt, Aug 21 2026:
+     "it also needs to talk to the labor planner. use 14k as the base sales for
+     a 10:30-4 day until you get a real holidays numbers to smart schedule and
+     budget."
+
+     Christmas Eve is a Thursday, so without this the store is forecast a full
+     Thursday's sales and budgeted a full Thursday's hours, on a day it shuts at
+     four. The board then looks entirely normal while being wrong by half a day
+     — the same failure shape storeHours.js exists to prevent, arriving through
+     the money instead of through the clock.
+
+     ⚠️ IT IS A DEFAULT, NOT A CLAMP. The moment a real holiday has been traded
+     and its actual sales recorded, the typed figure above wins and this never
+     runs again for that date. That is what "until you get a real holidays
+     numbers" means.
+
+     ⚠️ AND IT IS ABSENT-MEANS-UNCHANGED. A store with no holiday policy has no
+     `p.holiday`, and every one of the eight callers behaves exactly as before.
+     Threading a fourth argument through all of them instead would have been
+     eight chances to miss one. */
+  const hol = p && p.holiday && p.holiday[iso];
+  const h = Number(hol);
+  if (hol !== undefined && hol !== null && hol !== "" && Number.isFinite(h) && h >= 0) return h;
+
+
   const dow = fromIso(iso).getDay();
-  return d.forecast !== undefined && d.forecast !== ""
-    ? Number(d.forecast) || 0
-    : wk[dow] || 0;
+  return wk[dow] || 0;
 }
 
 /* Target for one ISO day: per-day override, else tier-derived from forecast. */
@@ -345,9 +473,9 @@ export async function resolvePlannedWage(ym, cfg, tierCfg, get) {
    Denominator is OPERATIONAL hours only — that is what the tier model
    describes, and it is the basis the tier's own targets were built on.
    Non-op hours are excluded here and accounted for in the labor % goal. */
-export async function monthProductivityGoal(ym, get) {
+export async function monthProductivityGoal(ym, get, policy) {
   requireGet(get);
-  const { p, tierCfg, wk } = await loadMonthBasis(ym, get);
+  const { p, tierCfg, wk } = await loadMonthBasis(ym, get, policy);
   const tier = activeTier(tierCfg);
   let forecast = 0, hours = 0;
   businessDaysOf(ym).forEach((iso) => {
@@ -362,9 +490,9 @@ export async function monthProductivityGoal(ym, get) {
 /* Month forecast total = sum of each business day's forecast. The Hub
    equivalent of the Sheet Planner's J83, which the Sheet's FCR tab uses
    as its LIVE Est. Sales (G5). */
-export async function monthForecastTotal(ym, get) {
+export async function monthForecastTotal(ym, get, policy) {
   requireGet(get);
-  const { p, wk } = await loadMonthBasis(ym, get);
+  const { p, wk } = await loadMonthBasis(ym, get, policy);
   let forecast = 0;
   businessDaysOf(ym).forEach((iso) => { forecast += forecastFor(iso, p, wk); });
   return forecast > 0 ? forecast : null;
@@ -489,9 +617,9 @@ export async function standingOpsPeople(get) {
    pay and pushed the goal high). Because benchmarkHours carries a fixed-
    hours term, this goal still floats with volume: it eases down as sales
    rise and up as they fall — it is not a fixed percent. */
-export async function monthLaborPlan(ym, get) {
+export async function monthLaborPlan(ym, get, policy) {
   requireGet(get);
-  const { p, cfg, tierCfg, wk } = await loadMonthBasis(ym, get);
+  const { p, cfg, tierCfg, wk } = await loadMonthBasis(ym, get, policy);
   const tier = activeTier(tierCfg);
   const { wage, source } = await resolvePlannedWage(ym, cfg, tierCfg, get);
 
@@ -635,10 +763,10 @@ export async function todayDaypartSplit(ym, todayOver, cfg, get, forIso) {
 
    Never throws: any failure returns nulls and the card just doesn't render
    that half. ──────────────────────────────────────────────────────────── */
-export async function monthLaborCard(ym, dow, get) {
+export async function monthLaborCard(ym, dow, get, policy) {
   requireGet(get);
   try {
-    const { p, cfg, tierCfg, wk } = await loadMonthBasis(ym, get);
+    const { p, cfg, tierCfg, wk } = await loadMonthBasis(ym, get, policy);
     const tier = activeTier(tierCfg);
     const { wage } = await resolvePlannedWage(ym, cfg, tierCfg, get);
     /* ⚠️ THE PREVIOUS MONTH IS LOADED FOR ONE REASON: the drive-thru share.
@@ -649,7 +777,7 @@ export async function monthLaborCard(ym, dow, get) {
        so it costs a request, not a wait. */
     const [mtd, plan, salesRec, prevSalesRec] = await Promise.all([
       get(fcrMtdKey(ym)).catch(() => null),
-      monthLaborPlan(ym, get).catch(() => null),
+      monthLaborPlan(ym, get, policy).catch(() => null),
       loadSalesMonth(ym, get).catch(() => null),
       loadSalesMonth(shiftMonth(ym, -1), get).catch(() => null),
     ]);
@@ -858,11 +986,11 @@ export async function monthLaborCard(ym, dow, get) {
    holiday-adjusted basis exists only for AVERAGES.
    Returns null until at least one real day is entered — a projection made of
    nothing but forecast IS the forecast, and that number has its own surface. */
-export async function monthProjectedFinish(ym, get) {
+export async function monthProjectedFinish(ym, get, policy) {
   requireGet(get);
   try {
     const [{ p, wk }, salesRec] = await Promise.all([
-      loadMonthBasis(ym, get),
+      loadMonthBasis(ym, get, policy),
       loadSalesMonth(ym, get),
     ]);
     const days = (salesRec && salesRec.days) || {};
@@ -904,10 +1032,10 @@ export async function monthProjectedFinish(ym, get) {
    claims otherwise is the exact defect the Aug 7 sweep found in the daypart
    DMs, which said "last 4 weeks" over a single day's number.
    ══════════════════════════════════════════════════════════════════════════ */
-export async function weekCutPlan(ym, startIso, dayCount, get) {
+export async function weekCutPlan(ym, startIso, dayCount, get, policy) {
   requireGet(get);
   try {
-    const { p, cfg, tierCfg, wk } = await loadMonthBasis(ym, get);
+    const { p, cfg, tierCfg, wk } = await loadMonthBasis(ym, get, policy);
     const tier = activeTier(tierCfg);
     const [nonOpPerDay, opsPeople, salesRec, prevSalesRec] = await Promise.all([
       standingNonOpPerDay(get),

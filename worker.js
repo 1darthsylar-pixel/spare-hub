@@ -28,7 +28,7 @@ import { boardShift, ownersForInput, isOwner as isBoardOwner, boardKey, mondayKe
      is running it. Nothing here knew what time a daypart STARTS until this —
      the four-a-day jobs are told by `&dp=` on the cron URL. */
   leadersOnDutyAt } from "./boardOwner.js";
-import { CHANNELS, STORE, STORE_CONFIG, tileAllowsId } from "./storeConfig.js";
+import { CHANNELS, STORE, STORE_CONFIG, storeCfg, tileAllowsId } from "./storeConfig.js";
 /* The star ledger's own rules. Only makeEntry may build a movement — it is what
    refuses a blank reason and a fractional amount — and starAwards decides who
    has earned one and who is blocked. Both are leaves. */
@@ -2694,7 +2694,12 @@ async function runWeekCutReport(env, forced = false) {
   const startIso = isoOfD(mon);
   const ym = `${mon.getFullYear()}-${pad2(mon.getMonth() + 1)}`;
   const get = (k) => sbGet(env, k);
-  const plan = await weekCutPlan(ym, startIso, 6, get);
+  /* ⚠️ THE HOLIDAY POLICY, AND THE WORKER READS THE DEPLOYED CONFIG. Without it
+     `p.holiday` is empty and this cut plan budgets a holiday week as an ordinary
+     one. `applyStoreOverrides` runs only in the BROWSER, so what `storeCfg`
+     answers here is what is compiled into storeConfig.js, never what a store
+     saved — the same limit HUB_HOST already carries, stated rather than hidden. */
+  const plan = await weekCutPlan(ym, startIso, 6, get, storeCfg("holidays", null));
   if (!plan) return { skipped: "labor basis unreadable", startIso };
   const expected = [];
   for (let i = 0; i < 6; i += 1) {

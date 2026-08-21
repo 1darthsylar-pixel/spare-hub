@@ -1249,7 +1249,13 @@ export default function ScheduleBuilder({ tier, user }) {
       try {
         const months = [...new Set(dates.map((d) => ymOf(d.date)))];
         const bases = {};
-        for (const ym of months) bases[ym] = await loadMonthBasis(ym, kvGet);
+        /* ⚠️ THE HOLIDAY POLICY IS THE THIRD ARGUMENT AND IT IS NOT OPTIONAL
+           IN PRACTICE. Without it `p.holiday` comes back empty and this budget
+           forecasts a short holiday as an ordinary weekday. It was missing at
+           every call site in the origin store until Aug 21 2026. Read at call
+           time, because saved settings arrive after this module is imported. */
+        const holPolicy = storeCfg("holidays", null);
+        for (const ym of months) bases[ym] = await loadMonthBasis(ym, kvGet, holPolicy);
         if (!alive) return;
         const out = {};
         dates.forEach(({ iso, date }) => {

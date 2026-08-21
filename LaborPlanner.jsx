@@ -60,6 +60,10 @@ import MonthYearPicker from "./MonthYearPicker.jsx";
    payroll-window trust rule without a circular dependency. Do not replace these
    with a FCRPage import. */
 import { laborWindow, laborRow } from "./laborWindow.js";
+/* The store's own holiday hours. Read at CALL time in holPolicy() below,
+   never at module scope: applyStoreOverrides runs after this file is
+   imported, so a module-level read freezes the shipped default. */
+import { storeCfg } from "./storeConfig.js";
 /* Leaf, imports nothing. dtShareOfFoh reads Sales Allocation's own day shape. */
 import { dtShareOfFoh } from "./dayparts.js";
 import CalendarGrid from "./CalendarGrid.jsx";
@@ -99,13 +103,48 @@ import {
   monthProjectedFinish as engineMonthProjectedFinish,
 } from "./laborEngine.js";
 export { plannerKey, dayBudget };
-export const monthLaborCard = (ym, dow) => engineMonthLaborCard(ym, dow, kvGet);
-export const monthLaborPlan = (ym) => engineMonthLaborPlan(ym, kvGet);
-export const monthForecastTotal = (ym) => engineMonthForecastTotal(ym, kvGet);
+
+/* ⛔⛔ THE HOLIDAY BASIS WAS BUILT, TESTED AND WIRED TO NOTHING. Fixed Aug 21
+   2026, the day it was found, hours after the hours themselves were typed in.
+
+   🐛 `loadMonthBasis(ym, get, policy)` folds the holiday sales basis into
+   `p.holiday`, and `forecastFor` reads it. Measured by RUNNING the real path
+   rather than reading it: **not one of the eight call sites passed a third
+   argument**, so `policy` was always undefined, `holidayBasisFor` returned `{}`
+   on its first line, and `p.holiday` was empty every single time. The whole
+   holiday arm of `forecastFor` was dead code in the shipped app.
+
+   ⇒ WHAT THAT COST. Christmas Eve is a Thursday. The planner forecast a full
+   Thursday's sales and budgeted a full Thursday's hours, on a day that shuts at
+   four — and Christmas Day, which is closed, budgeted a crew. Matt typed the
+   real figures into Store Settings and nothing read them. Nothing errored,
+   because an empty map is exactly what a store with no holiday policy has.
+
+   ★ AND NO TEST COULD HAVE CAUGHT IT. `holidayBasisFor` was tested by handing
+   it a policy directly, which is the one thing the app never does. The same
+   shape as `HUB_SCHEDULE_PULL_READY` and the announcement filter in this
+   codebase's own history: correct at the leaf, reaching nobody.
+
+   ⚠️⚠️ THIS IS THE ONE PLACE THE BROWSER BINDS, AND THAT IS WHY THE FIX IS
+   HERE. Every screen calls these wrappers, never the engine, so binding the
+   policy beside `kvGet` is ONE site rather than eight chances to miss one — the
+   exact risk `loadMonthBasis`'s own comment warned about.
+   ⚠️ READ AT CALL TIME, NEVER AT MODULE SCOPE. `applyStoreOverrides` runs after
+   this file is imported, so a `const POLICY = storeCfg(...)` up here would
+   freeze the shipped default and never see what the store saved. That is the
+   same bug `swapPolicy` had in Availability.jsx.
+   ⚠️ `laborEngine.js` STILL IMPORTS ONLY ZERO-IMPORT LEAVES, which its header
+   requires so it stays runnable from the Worker. The config is read HERE and
+   handed in. Do not import storeConfig.js into the engine to save this line. */
+const holPolicy = () => storeCfg("holidays", null);
+
+export const monthLaborCard = (ym, dow) => engineMonthLaborCard(ym, dow, kvGet, holPolicy());
+export const monthLaborPlan = (ym) => engineMonthLaborPlan(ym, kvGet, holPolicy());
+export const monthForecastTotal = (ym) => engineMonthForecastTotal(ym, kvGet, holPolicy());
 export const monthNonOpHours = (ym, throughIso) => engineMonthNonOpHours(ym, throughIso, kvGet);
-export const monthProductivityGoal = (ym) => engineMonthProductivityGoal(ym, kvGet);
+export const monthProductivityGoal = (ym) => engineMonthProductivityGoal(ym, kvGet, holPolicy());
 export const resolvePlannedWage = (ym, cfg, tierCfg) => engineResolvePlannedWage(ym, cfg, tierCfg, kvGet);
-export const monthProjectedFinish = (ym) => engineMonthProjectedFinish(ym, kvGet);
+export const monthProjectedFinish = (ym) => engineMonthProjectedFinish(ym, kvGet, holPolicy());
 
 const NAVY = "#1B3A5C", RED = "#DD0031", INK = "#232A31", GRAY = "#6B7480",
       LINE = "#E3E7EC", BG = "#F6F8FA", GREEN = "#166B4A", AMBER = "#7A5A00";
