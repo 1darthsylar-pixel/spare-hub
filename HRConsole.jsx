@@ -9,6 +9,7 @@ import { effectiveRole } from "./accessOverrides.js";
 import { collectEvalStrings, applyEvalStrings } from "./courseTranslate.js";
 import { hrInConsole, hrNormPerson, HR_ASSIGNABLE_LADDER, hrDisplayName } from "./hrRoster.js";
 import { kvGet, kvSet, kvGetResult, publishSharedRows, uploadDoc, signedDocUrl, deleteDoc, listSubmissions, HUB_TOKEN_KEY, hrSessionExpired } from "./store.js";
+import { markSigned } from "./signedTick.js";
 /* ★ WHO MAY BE GIVEN AN EVALUATION, AND WHO MAY BE SUGGESTED INSTEAD. Two rules
    that both used to read `rank >= 4` inline in three places — see evalPools.js
    for why that is the mistake worth a file of its own. */
@@ -2496,7 +2497,19 @@ function HRConsole({ launchers = [] }) {
         body: JSON.stringify(body),
       }).then((x) => x.json());
     } catch { r = null; }
-    if (r && r.ok) return true;
+    if (r && r.ok) {
+      /* ★ SAY IT ONLY AFTER THE SERVER SAID IT IS STORED. The home screen's
+         "documents to sign" number and the person's own handbook state are
+         both server reads that nothing else re-triggers, so without this line
+         they sit stale until the page is reloaded and the person reasonably
+         concludes their signature did not save.
+         ⛔ NOT BEFORE THE POST, AND NOT IN THE `catch`. Announcing on the
+         ATTEMPT would clear the red number on a refusal, which is the same lie
+         pointing the other way — and refusals here are exactly what this route
+         was built to stop hiding. */
+      markSigned();
+      return true;
+    }
     /* A thrown fetch really is the network; a returned error is not. Saying
        "check your connection" for a refusal is the exact lie being fixed. */
     try { window.alert(r ? ackErrorText(r.error) : "No answer from the Hub. Check your connection and try again — nothing was changed."); } catch {}
