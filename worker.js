@@ -10604,7 +10604,15 @@ export default {
          done" rather than "it was attempted". A failed run clears its lease and
          confirms nothing, so it is retryable immediately. */
       if (job && !forced && !env.__QUIET) {
-        await confirmRanToday(env, dedupJobKey, jobRes.status < 400);
+        /* ⚠️⚠️ A JOB THAT SAYS IT IS NOT FINISHED DOES NOT CONFIRM THE DAY.
+           The backup copies what its subrequest budget allows and answers
+           `done: false` with a count of what is left. Confirming on that would
+           mark the day done after one partial pass and the library could never
+           finish. Only an explicit `done: false` blocks it, so the other forty
+           jobs — which carry no `done` at all — behave exactly as before. */
+        let finished = true;
+        try { const b = await jobRes.clone().json(); finished = !(b && b.done === false); } catch { /* not JSON, fine */ }
+        await confirmRanToday(env, dedupJobKey, jobRes.status < 400 && finished);
       }
       return jobRes;
     }

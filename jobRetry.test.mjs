@@ -67,7 +67,14 @@ group("1. the day is confirmed, never claimed");
   t("it never throws", /catch \(e\)/.test(conf));
 
   t("★★ the dispatcher confirms, keyed on the response",
-    /confirmRanToday\(env, dedupJobKey, jobRes\.status < 400\)/.test(SRC));
+    /confirmRanToday\(env, dedupJobKey, jobRes\.status < 400 && finished\)/.test(SRC));
+  /* ⚠️ AND A JOB THAT SAYS IT IS NOT FINISHED CONFIRMS NOTHING. The backup
+     copies what its budget allows and answers `done: false`. Confirming on that
+     would mark the day done after one partial pass and the library could never
+     finish. Only an explicit `done: false` blocks it, so the other forty jobs,
+     which carry no `done` at all, are untouched. */
+  t("★★ a partial run does not confirm the day", /finished = !\(b && b\.done === false\)/.test(SRC));
+  t("★ and a job with no `done` still confirms", /let finished = true;/.test(SRC));
 }
 
 group("2. the marker survives the failure that caused all this");
