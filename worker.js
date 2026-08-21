@@ -3276,7 +3276,28 @@ async function sbListSubmissions(env, tool, sinceISO) {
       Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
     },
   });
-  if (!res.ok) return [];
+  /* ⛔⛔ A REFUSED READ IS NOT "NOBODY SUBMITTED", AND THE DIFFERENCE REACHES
+     PHONES. This answered `[]` for both, and all three callers subtract what
+     came back from a roster to work out who is MISSING:
+       • the trainer-tasks summary then pushes EVERY trainer that their
+         cleaning task is still open
+       • the weekly food-safety report tells leaders there were no walkthroughs
+       • the onboarding notice silently skips everybody
+     and every one of them stamps a good run afterwards.
+
+     ⚠️ This is the same class as the cleaning summary fixed on Aug 19, which
+     DMed the cleaning owner that her week was outstanding when it may have
+     been finished. That fix landed one file over and this reader was left.
+
+     ⚠️⚠️ IT THROWS, AND ALL THREE CALLERS ARE SCHEDULED JOBS, NEVER A REQUEST
+     PATH — checked before this changed, so a throw cannot become a 500 on
+     somebody's screen. Returning an error object would be worse than useless
+     here: the dispatcher wraps whatever a job returns in `ok: true`, so it
+     would stamp a healthy run on the morning it told thirty people the wrong
+     thing. Same reasoning as `runBackup` and the retention purge.
+     ⚠️ AN EMPTY RESULT SET IS UNTOUCHED. A successful read of nothing still
+     answers `[]`, which is a real and common answer. */
+  if (!res.ok) throw new Error(`submissions read refused: ${res.status} on ${tool}`);
   return res.json();
 }
 
