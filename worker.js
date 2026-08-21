@@ -309,6 +309,9 @@ const FROM = `${STORE.legalName} <${STORE.notifyEmail}>`;
    ⚠️ A KEY, NOT storeConfig.js. That file ships to every browser, and four
    personal addresses in it would redo the Aug 4 leak that pulled 105 emails
    out of the public bundle. Read here on the service key and nowhere else. */
+/* A refused read, told apart from an absent one. `null` means the key is
+   genuinely not there yet, which at a new store is the normal state. */
+const UNREADABLE = Symbol("unreadable");
 const STORE_RECIPIENTS_KEY = "gcfcr-store-recipients-v1";
 
 /* ⚠️ SCOPED TO ONE STORE NUMBER, AND THAT IS THE WHOLE TRICK. Cash Audit is a
@@ -773,8 +776,24 @@ function icsFor({ uid, summary, description, at, mins, tz, organizer, organizerN
    ⚠️ `id` AND `createdAt` ARE ALWAYS GENERATED HERE and cannot be passed in.
    A caller that could set either could forge when something was sent. */
 async function writeAnnouncement(env, fields, known) {
-  const list = known === undefined ? await sbGetStrict(env, ANNOUNCE_KEY).catch(() => null) : known;
-  if (list === null) return null;
+  /* 🐛🐛 THIS USED TO BE `.catch(() => null)` FOLLOWED BY `if (list === null)
+     return null`, WHICH MADE THE FEATURE UNABLE TO START. `sbGetStrict` returns
+     null for an ABSENT key and throws only on a refused read — that distinction
+     is the entire reason it exists — and collapsing both into null meant the
+     record could only be written IF IT ALREADY EXISTED. At a store that has
+     never posted one it does not exist, so every `postHubRecap` call site
+     returned "nothing was written" from the day it shipped and no announcement
+     could ever reach the Hub. Nothing errored; the callers all treat a false
+     return as best effort.
+     ⇒ ABSENT NOW PROCEEDS AND CREATES THE RECORD. A REFUSED READ STILL REFUSES,
+     which is the protection that was actually wanted: writing `[ev]` over a
+     record that was merely unreadable would erase every announcement on file. */
+  let list;
+  if (known !== undefined) list = known;
+  else {
+    try { list = await sbGetStrict(env, ANNOUNCE_KEY); }
+    catch { return null; }
+  }
   const all = annList(list);
   const ev = annMake({
     ...(fields || {}),
@@ -13443,7 +13462,7 @@ export default {
         const who = await hubRank(env, uid);
         const isLeader = tierForRank(who.rank) >= 3;
 
-        const all = escList(await sbGetStrict(env, ESCALATIONS_KEY).catch(() => null));
+        const all = escList(await sbGetStrict(env, ESCALATIONS_KEY));
 
         if (action === "send") {
           if (!escIsReason(b && b.reason)) return no("pick a reason", 400);
@@ -13754,12 +13773,17 @@ export default {
         const who = await hubRank(env, uid);
         const isLeader = tierForRank(who.rank) >= 3;
 
-        const list = await sbGetStrict(env, ANNOUNCE_KEY).catch(() => null);
+        const list = await sbGetStrict(env, ANNOUNCE_KEY).catch(() => UNREADABLE);
         /* ⚠️ A FAILED READ IS NOT AN EMPTY LIST. Writing a rebuilt array on top
            of a read that failed erases every announcement in the store — the
            exact bug the rollouts tile shipped with. sbGetStrict throws rather
            than answering null, and this refuses rather than guessing. */
-        if (list === null) return no("could not read the announcements just now, so nothing was changed", 503);
+        /* ⚠️ SAME BUG AS writeAnnouncement, SAME FIX. An absent record is a
+           store with no announcements yet, not an unreadable one, and refusing
+           here meant the very first "create" could never land. `annList` turns
+           null into [], so "open" and "retract" fall through to their own 404
+           rather than a misleading 503. */
+        if (list === UNREADABLE) return no("could not read the announcements just now, so nothing was changed", 503);
         const all = annList(list);
 
         /* ── mark it opened ──────────────────────────────────────────────
