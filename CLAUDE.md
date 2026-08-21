@@ -1,5 +1,30 @@
 # SET-THIS-TO-THE-STORE-NAME Hub — project rules
 
+## 🛑 CURRENT HOLDS — read this before touching anything
+
+**No session can see the one before it.** No shared memory exists. This block is
+the only channel, because every session loads this file automatically before it
+does anything else.
+
+⚠️⚠️ **THIS BLOCK DID NOT EXIST UNTIL Aug 21 2026, AND THAT WAS THE GAP.** Every
+other repo in this project opens with one. **Spare is the copy a new store starts
+from**, so anything missing here is missing from every store that has not opened
+yet — including the one channel sessions have for talking to each other.
+
+**Three rules:**
+
+1. **Read this block first.** Every session, every time.
+2. **Update it in the same commit that changes the state.** A hold that has
+   already lifted is worse than no hold, because the next session trusts it.
+3. **Delete a hold when it lifts.** Do not leave it marked "(resolved)".
+
+| Set | Hold | Who |
+|---|---|---|
+| Aug 21 | ❓ **`ownerSeed.empty.js` AND `HR_CONSOLE_OPEN_BY_RANK` DISAGREE, AND ONLY MATT CAN SETTLE IT.** The origin's template now carries `hrConsole: [{ id: null, names: ["matt jackson"] }]` with `HR_CONSOLE_OPEN_BY_RANK` **false** to match — Matt, Aug 16 2026: *"the Guilford store should only have me in the hr console. Can you build that into all repos currently and in the future."* ⛔ **This repo ships the flag `true`**, and its own section below records that as deliberate: with it false and the list empty, nobody can open HR Console at all, founder included, and the roster can then never be imported. ⇒ **Adopting the template alone would half-land a design whose other half is an access gate.** It was measured and left. ⚠️ **`ownerSeed.empty.js` is read only by `newstore.mjs`** — the live file is `ownerSeed.js`, which still has `hrConsole: []` — so nothing here is broken today. **This is about what store four is born with.** Matt decides. | — |
+| Aug 21 | ⏳ **LINEUP AND THE BOARD ENGINE ARE HELD, BY MATT'S OWN INSTRUCTION.** Aug 15 2026: *"Wait on lineup to finish but each store will be very different."* ⇒ Seven files sit in the safe-to-adopt bucket and stay there on purpose: `FOHAutoAssign.js` `SchoolDates.jsx` `jobCodes.js` `scheduleWarnings.js` `shiftMarket.js`, plus `storeRules.test.mjs`, which grades scheduler rules this store does not have. ⛔ **Do not adopt them to make the drift number smaller.** ⭐ **And when Lineup does land here, the five harness drivers land in the SAME job** — Matt, Aug 19 2026: *"port the harness lineup drivers when lineup lands."* | — |
+
+---
+
 ## ⛔⛔ `App.jsx` NEVER INDEXES THE RAW RANK MAP — Aug 19 2026
 
 `HR_RANK_BY_TITLE` is the **built-in ladder only**. `hrRankOfTitle` is that
@@ -79,6 +104,74 @@ admin lists. Change it and this store inherits another restaurant's setup.
 | Store Settings | Identity, area owners, features, financial goals. |
 | Push notifications | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. |
 | Scheduled jobs | cron-job.org entries hitting `/api/run-job`. Native Cloudflare Cron Triggers do not deploy on this account. |
+
+---
+
+### ✅ WHAT THE NIGHT OF Aug 21 2026 BROUGHT ACROSS — measured
+
+**Matt: "I want to wake up tomorrow with all repos In line and no loose ends so
+I can focus on the lineup."** ⛔ **Everything here is measured with `drift.mjs`
+and the build. Nothing in it is a plan.**
+
+| | before | after |
+|---|---|---|
+| shared files in sync | 72% | **84%** |
+| files in the safe-to-adopt bucket | 28 | **7** |
+| guards that run here | 74 | **95** |
+
+⭐⭐ **FOUR BUGS CAME OFF MATT'S OWN SCREENSHOTS AT THE ORIGIN AND EVERY ONE WAS
+LIVE HERE TOO.** Six checks, every test file and a green `vite build` were
+passing on all four.
+
+| what it looked like | what it was |
+|---|---|
+| ordinary inputs listed under a heading reading **OPEN LISTS** | the default All-inputs view drew every row with **no band of its own**. The other three views each head their groups, which is why only the default was wrong |
+| *"the day's 17.24 h"* on a day scheduled **393h** | `dayVar` is a **variance**, printed in the vocabulary of total hours, with `Math.abs` stripping the sign the rest of the planner insists on |
+| a Cash Audit entry filing a **shortage nobody counted** | `emptyAudit` ships `tills: "1000"` prefilled with every denomination blank, so opening the form and pressing Save is enough |
+| **16 flat cards across 6 screens** | nothing had been undone. Each screen had raised cards from one day and flat ones from another |
+
+⇒ **The guards travel with the fixes**: `cashCount.test.mjs` (a blank grid is not
+a count of zero — an untouched box holds `""`, a counted-and-empty box holds
+`"0"`, and `Number()` flattens both), `varianceWords.test.mjs` (a variance may
+never print without a word saying which way it goes), and `flatCards.test.mjs`,
+which **arrived RED here** and is what found the sixteen.
+
+⚠️⚠️ **THE LESSON THAT REPEATED IN EVERY PASS: `drift.mjs` COMPARES BYTES, SO A
+FILE IN THE SAFE BUCKET THAT IMPORTS SOMETHING THIS REPO HAS NEVER HAD STILL
+READS AS SAFE.** The **build** found those, one failure at a time, not the tool.
+⇒ **Adopt, build, read the error, repeat.** Never adopt a list and assume.
+
+⚠️ **AND TWO ADOPTED TESTS ARRIVED RED BECAUSE THEY FOUND REAL BUGS HERE**, which
+is the whole argument for tests travelling with the code:
+- `storeConfigLoad.test.mjs` — a lapsed session ran the **whole visit on the
+  origin store's defaults**, because nothing asked again after sign-in.
+- `ipoPlanLoad.test.mjs` — **a refused plan read blanked the quarter**, which is
+  the "all of my ipo action items dissapeared" shape.
+
+⭐ **ONE NPM PACKAGE CAME WITH IT, AND IT WAS A DELIBERATE, DATED DECISION (rule 21).** `read-excel-file`, pinned to the origin's exact `9.3.10` and installed `--ignore-scripts`. It is what the RDR import on the scorecard paste box needs. ⚠️ **A store generated from the origin today would already have it** — this repo is an older snapshot, so adding it is alignment, not a new dependency.
+
+---
+
+#### 📋 WHAT IS LEFT HERE, AND IT IS NOT STARTED
+
+⭐ **EVERY ORIGIN GUARD THAT RUNS GREEN HERE IS NOW HERE.** Each missing test
+file was copied in and **RUN**: green stays, red was **backed straight out**
+rather than quarantined, because a test that cannot be run counts as FAILED and
+`KNOWN_STALE` must never become a place to park work.
+
+⚠️⚠️ **A RED ONE MEANS TWO DIFFERENT THINGS AND CONFUSING THEM IS THE TRAP.**
+Most grade code this store genuinely does not have, and those arrive **with the
+feature**. But some are red for the other reason — **the code is here and it has
+drifted.** Measured at the spare, and the same shape is expected here:
+
+| guard | what it found |
+|---|---|
+| `notePanelRing` | six inset panels in `LaborPlanner` not using the shared style |
+| `sectionBands` | `WasteTracker` not importing the shared band |
+| `pageWidth` | the page width still hardcoded in two places |
+
+⇒ **That is the same class Matt keeps catching by glancing at a screen.** It is
+real work on `bothChanged` files rather than a copy, and it is **not started.**
 
 ---
 
