@@ -1562,6 +1562,12 @@ async function runSlackAvatars(env) {
 //    Cloudflare KV binding (fast, no Supabase round-trip needed for this).
 //    Cron can occasionally double-fire on retries; this prevents a
 //    duplicate Slack post/email in that case. ──
+/* ⚠️ LONG ENOUGH THAT A SLOW JOB IS NOT DOUBLE-RUN, SHORT ENOUGH THAT A DEAD
+   ONE IS RETRYABLE THE SAME MORNING. Fifteen minutes is mine, not Matt's, which
+   is why it is a named constant. The old behaviour was effectively a 24-hour
+   lease that was never released. */
+const JOB_LEASE_SECONDS = 15 * 60;
+
 async function alreadyRanToday(env, jobKey) {
   /* 🐛 WAS toISOString() — UTC, while every other date in this file is ET via
      isoOfD(nowET()). Concrete failure: a manual run at 9pm ET Monday (already
@@ -1573,10 +1579,63 @@ async function alreadyRanToday(env, jobKey) {
      ⚠️ `isoOfD` is a const declared below this function. Safe: this is only
      ever called from a request handler, long after module evaluation. */
   const today = isoOfD(nowET());
-  const last = await env.GATE_CITY_KV.get(`ran:${jobKey}`);
-  if (last === today) return true;
-  await env.GATE_CITY_KV.put(`ran:${jobKey}`, today, { expirationTtl: 60 * 60 * 24 * 3 });
+
+  /* ⛔⛔ CONFIRMED, NOT CLAIMED. THIS USED TO WRITE THE WHOLE-DAY MARKER RIGHT
+     HERE, BEFORE THE JOB HAD DONE ANYTHING.
+
+     🐛 Measured Aug 21 2026 on `backup`, which had never once recorded a run.
+     Matt called it: the marker was written, the job then died on Cloudflare's
+     subrequest limit, and every call for the rest of that day answered
+     "already-ran-today". So the job marked ITSELF as done, locked itself out,
+     and left nothing behind saying why. The Report Card read "no run on
+     record", which was true and told nobody anything.
+
+     ⚠️⚠️ AND IT COULD NOT EVEN REPORT THE DEATH. `noteJobRun` stamps over the
+     network, and a job that has exhausted its subrequests has none left to
+     stamp with — so the one failure that most needs writing down is the one
+     that cannot write. That is why the record was empty rather than `ok:false`.
+
+     ⇒ Two markers now, and the split is the whole fix:
+
+       `ran:<job>`    the day is DONE. Written by `confirmRanToday`, only after
+                      the job actually answered ok.
+       `lease:<job>`  a run is IN FLIGHT. Short TTL, written here.
+
+     ⚠️ `ran:` KEEPS ITS EXACT OLD SHAPE — the ET date string — so every marker
+     already in KV still reads as "done today" and nothing double-runs on the
+     deploy that ships this. Rule 1.
+     ⚠️ THE LEASE IS WHAT STOPS A DOUBLE RUN while a job is still working, which
+     is the job the old early-write was really doing. It expires, so a death
+     costs one lease rather than a whole day.
+     ★ Both markers are Cloudflare KV through the binding, which does NOT spend
+     a subrequest. That matters here more than anywhere: this guard has to keep
+     working in exactly the state that broke everything else. */
+  const done = await env.GATE_CITY_KV.get(`ran:${jobKey}`);
+  if (done === today) return true;
+
+  const lease = await env.GATE_CITY_KV.get(`lease:${jobKey}`);
+  if (lease) return true;
+
+  await env.GATE_CITY_KV.put(`lease:${jobKey}`, today, { expirationTtl: JOB_LEASE_SECONDS });
   return false;
+}
+
+/* The other half. Called by the dispatcher only when the job answered ok.
+   ⚠️ A FAILED RUN CONFIRMS NOTHING, which is the point: it stays retryable, and
+   the next cron fire or a `&force=1` gets another go. The lease is cleared so
+   that retry does not have to wait it out.
+   ⚠️ IT NEVER THROWS. A marker that cannot be written must not turn a job that
+   worked into a job that reports failure. */
+async function confirmRanToday(env, jobKey, ok) {
+  if (!jobKey || (env && env.__QUIET)) return;
+  try {
+    if (ok) {
+      await env.GATE_CITY_KV.put(`ran:${jobKey}`, isoOfD(nowET()), { expirationTtl: 60 * 60 * 24 * 3 });
+    }
+    await env.GATE_CITY_KV.delete(`lease:${jobKey}`);
+  } catch (e) {
+    console.error("job-marker write failed:", e);
+  }
 }
 
 // ── Eastern-time helper — DST-safe ──
@@ -1923,6 +1982,7 @@ async function backupReadTable(env, table, order) {
     const url = `${env.SUPABASE_URL}/rest/v1/${table}`
       + `?select=*&order=${encodeURIComponent(order)}.asc`
       + `&limit=${BACKUP_PAGE}&offset=${offset}`;
+    bkSpend(env);
     const res = await fetch(url, {
       headers: {
         apikey: env.SUPABASE_SERVICE_KEY,
@@ -1968,6 +2028,27 @@ async function backupReadTable(env, table, order) {
    could not be listed must never be written up as "0 objects", because a
    manifest claiming success is worse than no manifest at all. */
 const BACKUP_BUCKETS = ["hr-files", "Receipts", "l101-coursework", "trainer-task-photos", "hub-assets"];
+/* ⛔⛔ CLOUDFLARE COUNTS `fetch` CALLS PER INVOCATION AND KILLS THE WORKER AT
+   THE CAP. Measured Aug 21 2026, the first time this job was ever called:
+   `Too many subrequests by single Worker invocation`. 595 files is 595 fetches
+   on a first run, on top of the table pages and the bucket listings.
+
+   ⚠️⚠️ AND THE DEATH COULD NOT REPORT ITSELF. `noteJobRun` stamps over the
+   network, so a job that has spent every subrequest has none left to say it
+   died with. The record stayed empty rather than `ok:false`, and the Report
+   Card said "no run on record" — true, and useless.
+
+   ⇒ THE BUDGET IS THE FIX, AND THE HEADROOM IS THE POINT. It stops well short
+   of the cap so the stamp, the day marker and the response all still fit. A run
+   that hits it copies what it can, says how many are left, and WRITES NO
+   MANIFEST. The next run continues, because the copy has always been
+   incremental — an object already in R2 at the same size costs no fetch at all.
+   ⚠️ 400 is mine, not measured against the real cap, which is why it is named.
+   595 files converge in two runs and then it is a handful a night forever. */
+const BACKUP_FETCH_BUDGET = 400;
+const bkSpend = (env) => { env.__backupFetches = (env.__backupFetches || 0) + 1; };
+const bkSpent = (env) => env.__backupFetches || 0;
+
 const BACKUP_LIST_PAGE = 100;
 /* A runaway guard, not a size limit, matching BACKUP_MAX_ROWS above. */
 const BACKUP_MAX_FILES = 20000;
@@ -1986,6 +2067,7 @@ const backupFilesName = () => `backup-files-${isoOfD(nowET())}.json`;
    by `checks/` and this one cannot. A backup that copied 19 of 595 files
    shipped green precisely because the walk lived in here. */
 async function backupListPage(env, bucket, prefix, offset) {
+  bkSpend(env);
   const res = await fetch(`${env.SUPABASE_URL}/storage/v1/object/list/${encodeURIComponent(bucket)}`, {
     method: "POST",
     headers: {
@@ -2021,6 +2103,7 @@ async function backupHasFile(env, key, size) {
 }
 
 async function backupCopyFile(env, bucket, name) {
+  bkSpend(env);
   const res = await fetch(
     `${env.SUPABASE_URL}/storage/v1/object/${encodeURIComponent(bucket)}/${name.split("/").map(encodeURIComponent).join("/")}`,
     { headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } },
@@ -2040,7 +2123,7 @@ async function runBackupFiles(env) {
   const startedAt = Date.now();
   const manifest = [];
   const perBucket = {};
-  let copied = 0, skipped = 0, bytes = 0;
+  let copied = 0, skipped = 0, bytes = 0, remaining = 0;
 
   for (const bucket of BACKUP_BUCKETS) {
     /* ⛔ NOT WRAPPED. A listing that fails takes the whole job down rather than
@@ -2050,13 +2133,28 @@ async function runBackupFiles(env) {
     for (const o of objects) {
       const key = `files/${bucket}/${o.name}`;
       manifest.push({ bucket, name: o.name, size: o.size, updatedAt: o.updatedAt });
+      /* ⚠️ A HEAD THROUGH THE BINDING COSTS NO SUBREQUEST, so the skip path
+         is free and an already-backed-up library finishes in one run. */
       if (await backupHasFile(env, key, o.size)) {
         skipped++; perBucket[bucket].skipped++;
         continue;
       }
+      if (bkSpent(env) >= BACKUP_FETCH_BUDGET) { remaining++; continue; }
       bytes += await backupCopyFile(env, bucket, o.name);
       copied++; perBucket[bucket].copied++;
     }
+  }
+
+  /* ⛔⛔ A PARTIAL RUN WRITES NO MANIFEST AT ALL. The manifest is the thing a
+     restore reads, and one listing files that are not in R2 is the "looks
+     complete and is not" failure this whole job exists to avoid — the same
+     rule as the row cap, which refuses rather than filing a short backup.
+     ⚠️ It reports `remaining` instead, which `noteJobRun` already carries into
+     the run record, so a store can see it is mid-way rather than finished. */
+  if (remaining) {
+    return { done: false, copied, skipped, remaining, files: manifest.length, bytes,
+             buckets: perBucket, ms: Date.now() - startedAt,
+             note: `subrequest budget spent; ${remaining} file(s) left for the next run` };
   }
 
   /* ⚠️ THE MANIFEST IS WRITTEN LAST, AFTER EVERY COPY HAS LANDED. Written
@@ -2072,7 +2170,7 @@ async function runBackupFiles(env) {
     files: manifest,
   }), { httpMetadata: { contentType: "application/json" } });
 
-  return { file: name, copied, skipped, files: manifest.length, bytes, buckets: perBucket, ms: Date.now() - startedAt };
+  return { done: true, file: name, copied, skipped, files: manifest.length, bytes, buckets: perBucket, ms: Date.now() - startedAt };
 }
 
 /* ⚠️⚠️ THE STORE IS IN THE FILENAME, AND THAT IS NOT COSMETIC.
@@ -10464,6 +10562,13 @@ export default {
          does not happen. It costs one round trip and it is the only reason any
          of this is here. */
       await noteJobRun(env, job, dedupJobKey, jobStartedAt, jobRes);
+      /* ⚠️ AFTER the stamp and BEFORE the return, and only if the job actually
+         answered ok. This is the half that makes the day marker mean "it was
+         done" rather than "it was attempted". A failed run clears its lease and
+         confirms nothing, so it is retryable immediately. */
+      if (job && !forced && !env.__QUIET) {
+        await confirmRanToday(env, dedupJobKey, jobRes.status < 400);
+      }
       return jobRes;
     }
 
