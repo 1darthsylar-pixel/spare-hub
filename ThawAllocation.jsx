@@ -545,7 +545,7 @@ export default function ThawAllocation({ tier = 1, user }) {
           </button>
 
           {importOpen && (
-            <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "16px 16px 14px", marginTop: 10, ...accentEdge(ACCENT_NEUTRAL, 3) }}>
+            <div style={{ background: "#fff", boxShadow: CARD_3D, border: "1px solid #E5E7EB", borderRadius: 14, padding: "16px 16px 14px", marginTop: 10, ...accentEdge(ACCENT_NEUTRAL, 3) }}>
               <div style={{ fontSize: 13.5, lineHeight: 1.55, color: "#4B5563", marginBottom: 10 }}>
                 Paste the thaw sheet exactly as it is written, top to bottom. Start
                 each door with <strong>THAW 1</strong>, <strong>THAW 2</strong> and so

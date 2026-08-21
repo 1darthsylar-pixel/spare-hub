@@ -463,7 +463,7 @@ export default function PTOTracker({ user }) {
       </div>
 
       {report && (
-        <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderLeft: `3px solid ${GREEN}`, borderTop: `3px solid ${GREEN}`, borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 12.5, lineHeight: 1.5 }}>
+        <div style={{ background: "#fff", boxShadow: CARD_3D, border: `1px solid ${LINE}`, borderLeft: `3px solid ${GREEN}`, borderTop: `3px solid ${GREEN}`, borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 12.5, lineHeight: 1.5 }}>
           <b>Imported {report.year}</b> — {report.matched} matched.{" "}
           {report.missed.length > 0
             ? <>{report.missed.length} name{report.missed.length === 1 ? "" : "s"} had no match on the roster and {report.missed.length === 1 ? "was" : "were"} skipped: <span style={{ color: RED }}>{report.missed.join(", ")}</span>. Add them by hand if they still work here.</>

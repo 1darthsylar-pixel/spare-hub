@@ -754,7 +754,7 @@ export function CourseEditor({ seedCourse, course, onSave, onRevert, onClose, st
                         const putQ = (nq) => setItem(si, ii, { questions: (it.questions || []).map((x, k) => (k === qi ? nq : x)) });
                         const problems = QE.questionProblems(q, qi);
                         return (
-                          <div key={qi} style={{ border: `1px solid ${C.line}`, borderRadius: 8, padding: 9, marginBottom: 8, background: "#fff" }}>
+                          <div key={qi} style={{ border: `1px solid ${C.line}`, borderRadius: 8, padding: 9, marginBottom: 8, background: "#fff", boxShadow: CARD_3D }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
                               <span style={{ fontSize: 12, fontWeight: 800, color: C.sub }}>Q{qi + 1}</span>
                               {/* ⚠️ Single vs select-all is the ONE control that can

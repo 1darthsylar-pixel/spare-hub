@@ -1174,7 +1174,7 @@ function EntryView({ date, setDate, period, setPeriod, filtered, getQty, bump, s
       </div>
       {manage && removedItems.length > 0 && (
         <div style={{ padding:"0 12px 28px" }}>
-          <div style={{ background:"white", border:`1px solid ${LINE}`, borderRadius:9, padding:"12px 14px" }}>
+          <div style={{ background:cardSurface(), boxShadow:CARD_3D, border:`1px solid ${LINE}`, borderRadius:9, padding:"12px 14px" }}>
             <div style={{ fontSize:12, fontWeight:800, color:INK, marginBottom:8, fontFamily:MONO, letterSpacing:.3 }}>REMOVED ITEMS ({removedItems.length})</div>
             {removedItems.map(item => (
               <div key={item.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"6px 2px", borderBottom:`1px solid ${LINE}` }}>
@@ -1494,7 +1494,7 @@ function DashboardView({ dashDate, setDashDate, data, don, menu, periodTotal, pe
       {mode === "day" ? (
         <>
           {/* Date selector */}
-          <div style={{ background:"white", borderRadius:9, padding:"12px 14px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between", border:`1px solid ${LINE}` }}>
+          <div style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"12px 14px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between", border:`1px solid ${LINE}` }}>
             <div>
               <div style={{ fontSize:10, color:INK_DIM, fontWeight:700, textTransform:"uppercase", letterSpacing:.5, fontFamily:MONO }}>Date</div>
               <div style={{ fontWeight:700, fontSize:15, color:INK }}>{fmtDate(dashDate)}</div>
@@ -1529,7 +1529,7 @@ function DashboardView({ dashDate, setDashDate, data, don, menu, periodTotal, pe
           {/* Area cards */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
             {areas.map(a => (
-              <div key={a.p} style={{ background:"white", borderRadius:8, padding:"11px 13px", border:`1px solid ${LINE}`, borderLeft: `3px solid ${a.color}`, borderTop: `3px solid ${a.color}` }}>
+              <div key={a.p} style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:8, padding:"11px 13px", border:`1px solid ${LINE}`, borderLeft: `3px solid ${a.color}`, borderTop: `3px solid ${a.color}` }}>
                 <div style={{ fontSize:10, color:INK_DIM, fontWeight:700, marginBottom:2, fontFamily:MONO }}>{a.p}</div>
                 <div style={{ fontSize:19, fontWeight:800, color:a.total>0?GOOD:"#ccc", fontFamily:MONO }}>{f$(a.total)}</div>
                 <div style={{ fontSize:10, color:INK_DIM, marginTop:1 }}>{a.items} item{a.items!==1?"s":""} · Waste</div>
@@ -1574,7 +1574,7 @@ function DashboardView({ dashDate, setDashDate, data, don, menu, periodTotal, pe
             const bdCount = bd.reduce((s, b) => s + b.qty, 0);
             const pieBd = bd.filter(b => b.value > 0);
             return (
-              <div key={p} style={{ background:"white", borderRadius:9, padding:"14px", marginBottom:12, border:`1px solid ${LINE}` }}>
+              <div key={p} style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"14px", marginBottom:12, border:`1px solid ${LINE}` }}>
                 <div style={{ fontSize:12, fontWeight:700, color:INK, marginBottom:8, background:ACCENT_WASH, padding:"6px 10px", borderRadius:6, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                   <span>{p} — by Product</span>
                   <span style={{ color:PCOLOR[p], fontWeight:800, fontFamily:MONO }}>{f$(bdTotal)} · {bdCount} ea</span>
@@ -1609,7 +1609,7 @@ function DashboardView({ dashDate, setDashDate, data, don, menu, periodTotal, pe
 
           {/* Donations (bulk) — by weight / each */}
           {donDayRows.length > 0 && (
-            <div style={{ background:"white", borderRadius:9, padding:"14px", marginBottom:12, border:`1px solid ${LINE}`, borderLeft: `3px solid ${PCOLOR.Donations}`, borderTop: `3px solid ${PCOLOR.Donations}` }}>
+            <div style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"14px", marginBottom:12, border:`1px solid ${LINE}`, borderLeft: `3px solid ${PCOLOR.Donations}`, borderTop: `3px solid ${PCOLOR.Donations}` }}>
               <div style={{ fontSize:12, fontWeight:700, color:INK, marginBottom:8, background:ACCENT_WASH, padding:"6px 10px", borderRadius:6, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                 <span>Donations — Bulk</span>
                 <span style={{ color:PCOLOR.Donations, fontWeight:800, fontFamily:MONO }}>
@@ -1642,7 +1642,7 @@ function DashboardView({ dashDate, setDashDate, data, don, menu, periodTotal, pe
       ) : (
         <>
           {/* Range selector */}
-          <div style={{ background:"white", borderRadius:9, padding:"12px 14px", marginBottom:10, border:`1px solid ${LINE}` }}>
+          <div style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"12px 14px", marginBottom:10, border:`1px solid ${LINE}` }}>
             <div style={{ fontSize:10, color:INK_DIM, fontWeight:700, textTransform:"uppercase", letterSpacing:.5, fontFamily:MONO, marginBottom:8 }}>Date Range</div>
             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
               <input type="date" value={rStart} max={rEnd} onChange={e => setRStart(e.target.value)}
@@ -1679,7 +1679,7 @@ function DashboardView({ dashDate, setDashDate, data, don, menu, periodTotal, pe
           </div>
 
           {/* Itemized aggregate */}
-          <div style={{ background:"white", borderRadius:9, padding:"14px", marginBottom:12, border:`1px solid ${LINE}` }}>
+          <div style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"14px", marginBottom:12, border:`1px solid ${LINE}` }}>
             <div style={{ fontSize:12, fontWeight:700, color:INK, marginBottom:8, background:ACCENT_WASH, padding:"6px 10px", borderRadius:6, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <span>All Items — {fmtDate(rStart)} to {fmtDate(rEnd)}</span>
               <span style={{ color:ACCENT, fontWeight:800, fontFamily:MONO }}>{f$(rangeTotal)}</span>
@@ -1705,7 +1705,7 @@ function DashboardView({ dashDate, setDashDate, data, don, menu, periodTotal, pe
 
           {/* Donations (bulk) over range */}
           {donRangeRows.length > 0 && (
-            <div style={{ background:"white", borderRadius:9, padding:"14px", marginBottom:12, border:`1px solid ${LINE}`, borderLeft: `3px solid ${PCOLOR.Donations}`, borderTop: `3px solid ${PCOLOR.Donations}` }}>
+            <div style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"14px", marginBottom:12, border:`1px solid ${LINE}`, borderLeft: `3px solid ${PCOLOR.Donations}`, borderTop: `3px solid ${PCOLOR.Donations}` }}>
               <div style={{ fontSize:12, fontWeight:700, color:INK, marginBottom:8, background:ACCENT_WASH, padding:"6px 10px", borderRadius:6, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                 <span>Donations — Bulk</span>
                 <span style={{ color:PCOLOR.Donations, fontWeight:800, fontFamily:MONO }}>
@@ -1743,7 +1743,7 @@ function Chip({ label, sub }) {
 
 function DashCard({ title, children }) {
   return (
-    <div style={{ background:"white", borderRadius:9, padding:"14px", marginBottom:12, border:`1px solid ${LINE}` }}>
+    <div style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"14px", marginBottom:12, border:`1px solid ${LINE}` }}>
       <div style={{ fontSize:12, fontWeight:700, color:INK, marginBottom:10, background:ACCENT_WASH, padding:"6px 10px", borderRadius:6 }}>{title}</div>
       {children}
     </div>

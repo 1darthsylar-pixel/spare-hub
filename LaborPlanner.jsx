@@ -2059,15 +2059,46 @@ export default function LaborPlanner() {
                 <span style={{ marginLeft: 10 }}>split is each daypart&rsquo;s real shape, not the flat {Math.round(cfg.bohPct * 100)}%</span>
               </div>
 
-              {dpDay.worst && (
+              {dpDay.worst && (() => {
+                /* ⛔⛔ THE NUMBER IS A VARIANCE AND THE WORDS CALLED IT THE
+                   DAY'S HOURS. Matt, Aug 21 2026, off his own screen.
+
+                   It read: "These are the day's 17.24 h spread across the
+                   dayparts ... they add up to the day total above" — on a
+                   Thursday whose calendar cell three inches up says 393.00h.
+                   `dayVar` is boardSched − budget, so 17.24 is how far the day
+                   sits FROM budget, and this block's own comment already says
+                   so: "the parts still sum to the day total exactly, because
+                   they are shares of it" — shares of the VARIANCE.
+
+                   ⚠️⚠️ A READER HAS NO WAY TO TELL, WHICH IS WHAT MAKES IT
+                   EXPENSIVE. 17.24 is a plausible number of hours, and "the day
+                   total above" is a real thing on the same screen holding a
+                   different number. Nothing errors and nothing looks broken.
+                   Same shape as the HR badge already written up: the number
+                   came from one thing and the wording came from another.
+
+                   ⚠️ AND `Math.abs` DROPPED THE SIGN, in a file whose own
+                   comment thirty lines up states the one convention for the
+                   whole planner — over is + and RED, under is − and GREEN. The
+                   rows above honour it. This sentence printed identical words
+                   for a day 17 hours over budget and a day 17 hours under it,
+                   which are opposite instructions to the person reading it. */
+                const varOver = dpDay.dayVar > 0.05;
+                const varUnder = dpDay.dayVar < -0.05;
+                return (
                 <div style={{ fontSize: 12, color: INK, background: BG, borderRadius: 8, padding: "8px 10px", marginTop: 8, lineHeight: 1.5 }}>
-                  These are the day&rsquo;s <b>{fmtH(Math.abs(dpDay.dayVar))} h</b> spread across the dayparts by
-                  where the hours actually sit — they add up to the day total above.
+                  These are the <b>{fmtH(Math.abs(dpDay.dayVar))} h</b> this day sits{" "}
+                  <b style={{ color: varOver ? RED : varUnder ? GREEN : GRAY }}>
+                    {varOver ? "over" : varUnder ? "under" : "away from"}
+                  </b>{" "}budget, spread across the dayparts by where the hours actually sit.
+                  They add up to the day&rsquo;s variance above, not to the hours it is scheduled.
                   {" "}<b>{dpDay.worst.dp}</b> is the softest at <b>${dpDay.worst.rate.toFixed(0)}/hr</b> against
                   a ${Number(sel.target).toFixed(0)} target, so lean a cut there first — but check the Sales Curve
                   before stripping a morning: prep and breading for lunch clock inside breakfast.
                 </div>
-              )}
+                );
+              })()}
               <div style={{ fontSize: 10.5, color: GRAY, marginTop: 6 }}>
                 Day and board totals are live. The split inside the day is a typical {DP_DOW[fromIso(selected).getDay() - 1]} from {dpDay.label} — Signal only publishes a month once it closes.
               </div>

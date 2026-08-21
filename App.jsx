@@ -5943,7 +5943,53 @@ export default function App() {
                           {g.items.map((r, i) => Row(r, `${g.label}-${r.id}-${i}`))}
                         </div>
                       ))
-                    : allInputs.filter((r) => r.state !== "open").map((r, i) => Row(r, `${r.id}-${i}`))}
+                    : (() => {
+                        /* ⛔⛔ A BAND IS A HEADING, NOT A DIVIDER. IT MUST NAME
+                           WHAT FOLLOWS IT.
+
+                           Matt, Aug 21 2026, off his own dashboard. The "Open
+                           lists" band above sits over ONE open list. In THIS
+                           view every ordinary input then followed it with no
+                           band of its own, so Daily sales, Labor hours and
+                           Daily food cost were stacked under a heading reading
+                           OPEN LISTS and read as open lists.
+
+                           ⚠️ THE OTHER THREE VIEWS WERE NEVER WRONG, and that is
+                           why this went unseen. Cadence, area and owner each
+                           head every group they draw, so the open-lists band is
+                           always closed off by the next heading. Only the
+                           default view left it orphaned, and the default view
+                           is the one everybody lands on.
+
+                           ⚠️ THE COUNT IS OF THE ROWS THIS BAND HEADS, never of
+                           the panel. That is what the other three bands do, and
+                           for anybody who is not an overseer the two numbers
+                           genuinely differ: the header counts THEIR inputs, the
+                           list draws the whole board. A band that borrowed the
+                           header's figure would print a number that does not
+                           match what is under it. */
+                        const rest = allInputs.filter((r) => r.state !== "open");
+                        if (!rest.length) return null;   // an empty heading teaches people to skim
+                        const late = rest.filter((r) => r.state === "late").length;
+                        const off  = rest.filter((r) => r.state === "offgoal").length;
+                        const untr = rest.filter((r) => r.state === "untracked").length;
+                        return (
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px 5px", borderTop: "1px solid #F1F3F5", background: "#FAFBFC" }}>
+                              <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em", color: PEAK, textTransform: "uppercase" }}>
+                                {myOpenLists.length ? "Everything else" : "All inputs"}
+                              </span>
+                              <span style={{ fontSize: 11.5, color: "#6B7480" }}>
+                                {rest.length - untr} input{rest.length - untr === 1 ? "" : "s"}
+                                {off ? ` · ${off} off goal` : ""}
+                                {late ? ` · ${late} need${late === 1 ? "s" : ""} you` : ""}
+                                {untr ? ` · ${untr} not tracked` : ""}
+                              </span>
+                            </div>
+                            {rest.map((r, i) => Row(r, `${r.id}-${i}`))}
+                          </div>
+                        );
+                      })()}
                 </div>
               )}
             </div>

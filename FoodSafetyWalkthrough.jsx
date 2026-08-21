@@ -809,7 +809,7 @@ export default function FoodSafetyWalkthrough() {
               </div>
               <div style={{ display: "grid", gap: 8 }}>
                 {items.map(f => (
-                  <div key={f.text} style={{ background: "#fff", border: `1px solid ${sec.border}`, borderLeft: `3px solid ${sec.accent}`, borderTop: `3px solid ${sec.accent}`, borderRadius: 10, padding: "12px 14px" }}>
+                  <div key={f.text} style={{ background: "#fff", boxShadow: CARD_3D, border: `1px solid ${sec.border}`, borderLeft: `3px solid ${sec.accent}`, borderTop: `3px solid ${sec.accent}`, borderRadius: 10, padding: "12px 14px" }}>
                     <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                       <div style={{ flex: 1, fontSize: 14.5, fontWeight: 600, lineHeight: 1.45 }}>{f.text}</div>
                       {f.times > 1 && (
@@ -873,7 +873,7 @@ export default function FoodSafetyWalkthrough() {
           <div style={{ fontFamily: "'IBM Plex Mono',ui-monospace,monospace", fontSize: 11, letterSpacing: "0.12em", color: "#0F766E", fontWeight: 600, marginBottom: 10 }}>RISK BREAKDOWN · SAFE EATS Q2</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12, marginBottom: 12 }}>
             {SECTIONS.filter(s => ["immediate", "high", "medium", "low"].includes(s.id)).map(s => (
-              <div key={s.id} className="fs-tile" style={{ background: "#fff", border: "1px solid #DCE5E3", borderTop: `3px solid ${s.accent}`, borderRadius: 12, padding: "15px 16px" }}>
+              <div key={s.id} className="fs-tile" style={{ background: "#fff", boxShadow: CARD_3D, border: "1px solid #DCE5E3", borderTop: `3px solid ${s.accent}`, borderRadius: 12, padding: "15px 16px" }}>
                 <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>{s.label}</div>
                 <div style={{ fontFamily: "'IBM Plex Mono',ui-monospace,monospace", fontSize: 30, fontWeight: 700, color: s.accent, lineHeight: 1.15, margin: "4px 0 1px" }}>{(effItems[s.id] || []).length}</div>
                 <div style={{ fontFamily: "'IBM Plex Mono',ui-monospace,monospace", fontSize: 10.5, color: "#94A3B8", letterSpacing: "0.05em" }}>CHECKPOINTS</div>
@@ -923,7 +923,7 @@ export default function FoodSafetyWalkthrough() {
           )}
 
           {/* ── Start walkthrough ── */}
-          <div style={{ background: "#fff", border: "1px solid #DCE5E3", borderRadius: 14, padding: "18px", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 16, alignItems: "end" }}>
+          <div style={{ background: "#fff", boxShadow: CARD_3D, border: "1px solid #DCE5E3", borderRadius: 14, padding: "18px", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 16, alignItems: "end" }}>
             <div>
               <label style={{ display: "block", fontFamily: "'IBM Plex Mono',ui-monospace,monospace", fontSize: 10, fontWeight: 600, letterSpacing: "0.15em", color: "#64748B", marginBottom: 7 }}>LEADER NAME</label>
               <input
