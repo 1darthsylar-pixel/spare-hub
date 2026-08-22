@@ -202,6 +202,42 @@ export const hrRankOfTitle = (title) => {
   return extra[t] || 0;
 };
 
+/* ═══ WHAT TO CALL SOMEBODY ON THEIR OWN SCREEN ══════════════════════════════
+
+   Matt, Aug 22 2026, off a screenshot of the Village header reading
+   **"Matt · Director · Sign out"**: *"this should say support."*
+
+   ⭐ HE HAD ALREADY DONE HIS HALF. That store's `gcfcr-hr-roles` holds exactly
+   one entry and it is `"Support"`. The retitle worked. The chip never asked.
+
+   ⛔⛔ IT PRINTED THE ACCESS TIER'S LABEL, AND TIER 3's LABEL IS THE WORD
+   "Director". So every person at tier 3 read "Director" there — Owner,
+   Executive Director, Human Resources, Accounts Payable, Payroll and Support
+   alike. It was never one person's bug; the host title is just what made it
+   visible, because the whole point of Support is that he is NOT staff at a
+   store he hosts and that line called him a Director of it.
+
+   ⚠️ THE TIER LABEL IS STILL RIGHT WHERE A TIER IS WHAT IS MEANT — what access
+   a tool needs, and what access the PIN card is refusing. Those stay. This is
+   the one place the answer is an IDENTITY rather than a level.
+
+   ⚠️⚠️ IT DECIDES NOTHING ABOUT ACCESS, AND MUST NOT. It never asks a rank and
+   never reads the ladder: a label that also grades is two things sharing one
+   function, and the drift shows up as a screen saying one thing while a gate
+   does another. `hrRankOfTitle` above is still the only answer to "what may
+   this person do".
+
+   ⚠️ A BLANK FALLS BACK TO THE TIER LABEL, which is exactly what every screen
+   did before, so a store with nobody titled is untouched.
+   ⚠️ A NON-STRING IS NOT A TITLE. `String(["Owner"])` is `"Owner"`, and the
+   fail-open gate in `finShared.js` is what that trick already cost once. */
+export const titleOrTier = (title, tier, tierNames) => {
+  const t = typeof title === "string" ? title.trim() : "";
+  if (t) return t;
+  const label = tierNames && tierNames[tier];
+  return typeof label === "string" && label ? label : "Signed in";
+};
+
 /* The Hub's three access tiers, from a job title. 1 = Team Member, 2 = Leader,
    3 = Director, which are App.jsx's own words for them.
 

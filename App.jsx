@@ -66,7 +66,7 @@ const SupplyCentral = lazy(() => import("./SupplyCentral.jsx"));
 const EquipmentLog = lazy(() => import("./EquipmentLog.jsx"));
 const DailyCleaning = lazy(() => import("./DailyCleaning.jsx"));
 const HRConsole = lazy(() => import("./HRConsole.jsx"));
-import { hrRankOfTitle } from "./hrRoster.js";
+import { hrRankOfTitle, titleOrTier } from "./hrRoster.js";
 import { requiredDeck, trainingKey, trainingRecord, hasWatched } from "./hubTraining.js";
 import { HR_DEFAULT_PIN, loadHRTeam, loadHRTeamResult, isHbExempt } from "./hrTeam.js";
 const CashAudit = lazy(() => import("./CashAudit.jsx"));
@@ -4712,7 +4712,18 @@ export default function App() {
                 fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
               }}
             >
-              {user ? `${user.name.split(" ")[0]} · ${TIER_NAMES[tier]}` : TIER_NAMES[tier]} · Sign out
+              {/* ⛔⛔ THE TITLE, NOT THE TIER LABEL. This printed
+                  `TIER_NAMES[tier]`, and tier 3's label is the word "Director",
+                  so an Owner, an Executive Director, HR, Accounts Payable,
+                  Payroll and Support all read "Director" here. Matt saw it on
+                  the Village header the morning after he had correctly retitled
+                  himself Support in HR Console: "this should say support."
+                  ⚠️ `TIER_NAMES` is still right where a TIER is what is meant —
+                  what a tool needs and what the PIN card is refusing. This one
+                  line is an identity, and it falls back to the tier label when
+                  a person has no title, which is what it always showed. */}
+              {user ? `${user.name.split(" ")[0]} · ${titleOrTier(user.role, tier, TIER_NAMES)}`
+                    : titleOrTier(null, tier, TIER_NAMES)} · Sign out
             </button>
             </div>
           )}
