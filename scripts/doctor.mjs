@@ -22,6 +22,7 @@
      3. is there uncommitted work sitting here
      4. is `node_modules` installed
      5. do the tests pass
+     6. has this repo drifted from the other Hub repos beside it
 
    ═══ THE TWO MODES, AND WHY THE QUICK ONE NEVER FAILS ══════════════════════
    `npm test` runs `--quick` through `pretest`. That mode does everything
@@ -227,6 +228,49 @@ if (QUICK) {
   } else {
     say(`Tests             ${failN || "some"} FAILED${passN ? ` (${passN} passed)` : ""}`);
     problems.push(`${failN || "Some"} test${failN === "1" ? " is" : "s are"} failing. Run: npm test   and read the first failure.`);
+  }
+}
+
+/* ── 6. drift against the other Hub repos ─────────────────────────────────────
+   ⛔⛔ A NOTE, NEVER A PROBLEM, AND THAT IS NOT timidity. `npm run doctor`
+   exits 1 on a problem, and drift between two live stores is the NORMAL state
+   every day of the year — the clones are hundreds of commits apart by design.
+   Counting it as a fault would make `doctor` fail forever, and a check that
+   always fails is one people learn to ignore, which would cost the other five.
+
+   ⚠️ IT SHELLS OUT AND READS ONE STABLE LINE rather than re-implementing the
+   comparison here. Two copies of "what has drifted" would drift (rule 8), and
+   this is the copy nobody would think to update.
+
+   ⚠️ SKIPPED IN --quick, exactly like the tests, because `pretest` fires before
+   every `npm test` and this takes a few seconds. */
+if (!QUICK) {
+  const drift = path.join(ROOT, "scripts", "engineDrift.mjs");
+  if (!fs.existsSync(drift)) {
+    say("Drift             no drift check in this repo");
+  } else {
+    const r = spawnSync(process.execPath, [drift, "--summary"],
+      { cwd: ROOT, encoding: "utf8", timeout: 120000 });
+    const rows = String(r.stdout || "").trim().split("\n").filter((l) => l.startsWith("DRIFT\t"));
+    if (r.status !== 0) {
+      /* ⚠️ SAY IT DID NOT RUN. Silence here would read as "no drift", which is
+         the one answer this must never give by accident. */
+      say("Drift             the drift check would not run");
+      notes.push("`npm run drift` failed to run. It cannot say whether this repo has drifted.");
+    } else if (!rows.length) {
+      say("Drift             no other Hub repo is checked out beside this one");
+    } else {
+      const parts = [];
+      let anything = 0;
+      for (const row of rows) {
+        const f = Object.fromEntries(row.split("\t").slice(1).map((kv) => kv.split("=")));
+        const n = Number(f.mineOnly || 0) + Number(f.theirsOnly || 0);
+        anything += n;
+        parts.push(`${f.other} ${n}`);
+      }
+      say(`Drift             ${parts.join(" \u00b7 ")}`);
+      if (anything) notes.push("Those are functions or jobs one repo has and another does not. Run: npm run drift");
+    }
   }
 }
 

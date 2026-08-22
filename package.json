@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "doctor": "node scripts/doctor.mjs",
+    "drift": "node scripts/engineDrift.mjs",
     "pretest": "node scripts/doctor.mjs --quick",
     "test": "node checks/run.mjs",
     "dev": "vite",
