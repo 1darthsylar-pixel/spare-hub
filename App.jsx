@@ -4044,7 +4044,16 @@ export default function App() {
      ⚠️ IT DOES NOT OVERWRITE A REAL INPUT WARNING. If the tile already has
      something to say, that stays; this only fills an empty line. Two claims on
      one row and the louder one wins is how a store stops reading either. */
-  const toolInputStatus = docsToSign > 0 && !toolInputStatusRaw.hr
+  /* 🐛 AND IT NO LONGER YIELDS. This read `docsToSign > 0 && !toolInputStatusRaw.hr`,
+     so the one line naming the signing screen was suppressed the moment HR had
+     anything else to say — which on a busy week is always.
+
+     The comment above argues that two claims on one row means a store reads
+     neither, and that argument is right. It just picks the wrong winner here:
+     a document waiting for a signature is the LOUDER claim, because it is the
+     one that turns the badge red and the only one a person cannot discover any
+     other way. Everything else HR reports can be found by opening HR. */
+  const toolInputStatus = docsToSign > 0
     ? { ...toolInputStatusRaw, hr: {
         tone: "offgoal",
         text: docsToSign === 1
@@ -5137,7 +5146,28 @@ export default function App() {
               if (section.icon === "sec:people" && docsToSign > 0) {
                 badge += docsToSign;
                 badgeTone = "red";
-                signals.push(`${countLabel(docsToSign, "document", "documents")} to sign`);
+                /* 🐛🐛 UNSHIFT, NOT PUSH, AND THAT ONE WORD IS THE BUG.
+                   Bri, Aug 21 2026: "I see a red digit, but I don't see any
+                   wording that tells me where to go."
+
+                   Only `signals[0]` is ever rendered — see badgeLabel below.
+                   This was the SIXTH signal pushed onto People, behind overdue
+                   evaluations, evaluations due, unsigned handbooks, pending
+                   recommendations and team goals. And it is the only one that
+                   sets the tone UNCONDITIONALLY.
+
+                   ⇒ So a leader with one document to sign and two evaluations
+                   due saw a RED badge reading "2 evaluations due this month".
+                   The redness came from the document. The wording came from
+                   something else. Nothing on the screen named the thing that
+                   made it red, which is exactly what she reported.
+
+                   ⚠️ THE RULE, NOT THE SPECIAL CASE: whatever set the tone has
+                   to be what the line says. This is the only signal here that
+                   forces red on its own, so it is the only one that has to
+                   lead. If a second one ever does, it needs the same
+                   treatment and this comment is the reason why. */
+                signals.unshift(`${countLabel(docsToSign, "document", "documents")} to sign`);
               }
               if (section.icon === "sec:money" && tier >= 3 && daily) {
                 badge = (!daily.sales ? 1 : 0) + (!daily.hours ? 1 : 0) + (!daily.giveaways ? 1 : 0) + ((daily.gvZeroSides || []).length ? 1 : 0) + (daily.eomYm ? 1 : 0) + (daily.guestYm ? 1 : 0);
