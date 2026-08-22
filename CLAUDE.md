@@ -144,6 +144,103 @@ admin lists. Change it and this store inherits another restaurant's setup.
 
 ---
 
+### 🐛🐛 TAPPING A NOTIFICATION MADE IT VANISH — FIXED Aug 22 2026
+
+**Matt, off a watch photo: "When I open on my phone it disappeared. When opening
+it should take you to the message."**
+
+⛔⛔ **THE TAP NEVER NAVIGATED.** `notificationclick` in `public/sw.js` did
+
+```js
+if (client.url.includes(target) && "focus" in client) return client.focus();
+```
+
+and **every URL contains `/`**. With the target defaulted to `/` the first open
+Hub window matched every single time: the notification closed, an old tab took
+focus, and nothing moved. ⇒ That is exactly "it disappeared".
+
+⚠️⚠️ **AND FOCUS ALONE COULD NOT HAVE WORKED EVEN WITH A REAL TARGET.**
+`App.jsx` reads `?to=` in a `useEffect` with an **empty dependency list**, so it
+fires on MOUNT and never again. Focusing a tab that is already mounted re-runs
+nothing. `client.navigate()` is the whole difference.
+
+★ **`pushTap.test.mjs` RUNS THE REAL HANDLER**, extracted from the shipped
+`sw.js` and driven against fake clients, because a grep cannot tell you whether
+a tap moves. ⚠️ `sw.js` is the one file where a mistake takes the installed app
+down for everybody — its own header says so — which is why it is EXECUTED here
+rather than read.
+
+⚠️ **ITS SENDER-HALF SECTIONS SAY `NOT GRADED` WHERE THIS STORE HAS NO
+`dmPerson` OR NO WATCHDOG.** That is deliberate and it is not a skip: **a test
+that passes on an absence keeps passing on the day the feature arrives without
+its fix**, which is exactly how a clone regresses silently.
+
+---
+
+### ⛔⛔ A FAIL-OPEN ACCESS GATE — FIXED Aug 22 2026
+
+`canSeeProfitShare` and `isDirector` in `finShared.js` let the COERCION do the
+deciding, and `String(["Owner"])` is `"Owner"`. Measured, three shapes cleared a
+gate that guards **pay groups**: `["Owner"]`, `new String("Owner")`, and any
+object whose `toString` returns an allowed role.
+
+⚠️⚠️ **THE ARRAY ONE IS REACHABLE FROM A STORED RECORD.** The Worker reads this
+title out of `gcfcr-hr-roles`, and JSON can hold `{"tm16": ["Owner"]}` — exactly
+the shape a "somebody holds two titles" change would produce.
+
+⇒ `typeof role === "string"` is the whole fix, and **for every real string title
+the answer is byte-identical to before**. `finSharedGate.test.mjs` travels with
+it and was proven here by putting the bug back.
+
+---
+
+### 🐛 THE FOOD SAFETY PHOTOS WERE NEVER BACKED UP — FIXED Aug 22 2026
+
+`food-safety-photos` was on `UPLOAD_BUCKETS`, on the sweep's `STORAGE_BUCKETS`,
+and **missing from `BACKUP_BUCKETS`**. Uploaded fine, swept fine, never backed
+up, manifest reporting `ok`.
+
+⚠️⚠️ **THE RISK WAS MEASURED, NOT ASSUMED.** A bucket listing is deliberately
+NOT wrapped, so a bucket that does not exist takes the whole nightly backup
+down. Read against the live project before writing.
+
+⭐ **`backupBuckets.test.mjs` READS BOTH LISTS out of the real `worker.js`** and
+fails if a bucket the app writes to is not backed up. It reads them rather than
+holding a copy: a third hand-kept list of buckets, living inside the test that
+exists to catch hand-kept lists drifting, would be the joke writing itself.
+
+⚠️ **THIS BACKUP HAS NOW SHIPPED A CONFIDENT MANIFEST OVER MISSING DATA THREE
+TIMES**, each by a different mechanism — a **cap** (an unpaged read saved 1,000
+of 1,379 keys), a **horizon** (a folder-blind listing saved 19 of 602 files) and
+a **list** (a bucket nobody carried across). The first two were fixed in code
+and cannot come back. This one can, every time somebody adds a bucket.
+
+---
+
+### ⭐ THE TILE WORDING TAKES THE TOOL'S OWN COLOUR — Aug 22 2026
+
+**Matt: "The wording on the right for the tools should match in color the tool
+color. It's too much brown."**
+
+The brown was ONE hex, `#B45309`, on every tile that had something to say.
+
+⛔ **AND "JUST USE THE TOOL COLOUR" MAKES SEVERAL TILES UNREADABLE.** Measured
+against the tile face, which is effectively white under `cardSurface`, the
+palest tool colour sits at **1.91:1** — text that is technically present and
+effectively invisible, on the one line whose whole job is to say the store is
+behind. The line is 11.5px, so it gets no large-text allowance either.
+
+⇒ `readableInk` in `heroColor.js` keeps the HUE and darkens only what it must.
+Most colours come back untouched. ⚠️ A flat additive step, the same one `lift`
+uses and for the same reason: scaling toward black desaturates.
+
+⚠️⚠️ **RED STAYS RED, AND THAT IS NOT AN INCONSISTENCY.** `offgoal` is a
+JUDGEMENT about a number and must look the same on every tile or it stops being
+a signal. **The tool colour is identity; red is a verdict, and identity must not
+repaint a verdict.**
+
+---
+
 ### 🐛 HALF A CARD TREATMENT WAS SHARED AND HALF WAS REMEMBERED — Aug 22 2026
 
 **Found at the origin off a glance at the screen, and this repo had the
