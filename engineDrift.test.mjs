@@ -195,6 +195,44 @@ ok("★★ it does NOT say 'No drift' when it read nothing",
    !/No drift/.test(blind.out));
 ok("refusing to report still exits 0", blind.code === 0);
 
+/* ── 8c · IT NEVER SAYS "No drift" WHILE HOLDING SOMETHING TO SHOW ───────────
+   ⛔⛔ THE BUG THIS TOOL EXISTS TO PREVENT, FOUND IN THE TOOL ITSELF ON THE DAY
+   IT SHIPPED. A name genuinely missing from the sibling's `worker.js` but
+   present in ANY other file over there is classed "elsewhere". When that was
+   the only difference, the report printed "No drift" and returned BEFORE the
+   moved list rendered — so a real missing function read as clean.
+
+   ⚠️ Its healthy output and its blind output were the same sentence, which is
+   the failure mode named in this file's own header. Reproduced with a fixture,
+   fixed, and pinned here. */
+const G = mk("eta-hub");
+const H = mk("theta-hub");
+fs.writeFileSync(path.join(G, "worker.js"), "function common(){return 1;}\nfunction onlyHere(){return 2;}\n");
+fs.writeFileSync(path.join(H, "worker.js"), "function common(){return 1;}\n");
+/* an UNRELATED function of the same name, in a different file */
+fs.writeFileSync(path.join(H, "misc.js"), "function onlyHere(){return 99;}\n");
+const collide = run(G, [H]);
+ok("★★ it does NOT say 'No drift' when a name only exists elsewhere",
+   !/No drift/.test(collide.out), collide.out.trim().split("\n").pop());
+ok("★★ and it shows the collision rather than swallowing it",
+   /onlyHere\s+worker\.js here, misc\.js at theta-hub/.test(collide.out));
+ok("it still says nothing is missing either way, because nothing is",
+   /Nothing is missing either way/.test(collide.out));
+
+/* ⚠️ AND THE COLLISION STILL DOES NOT COUNT AS DRIFT, so doctor stays quiet. */
+const collideSum = run(G, [H, "--summary"]);
+ok("★★ a collision is still reported separately, not as a missing thing",
+   /mineOnly=0/.test(collideSum.out) && /theirsOnly=0/.test(collideSum.out) && /elsewhere=1/.test(collideSum.out));
+
+/* ⚠️ A name written as a function EXPRESSION was invisible. Latent today, and
+   invisible is how this tool reports clean over a real gap. */
+const I = mk("iota-hub");
+const J = mk("kappa-hub");
+fs.writeFileSync(path.join(I, "worker.js"), "const exprFix = function () { return 1; };\nfunction common(){}\n");
+fs.writeFileSync(path.join(J, "worker.js"), "function common(){}\n");
+const expr = run(I, [J]);
+ok("★★ a function expression is seen, not skipped", /exprFix/.test(expr.out));
+
 /* ── 9 · THE SUMMARY LINE IS STABLE ──────────────────────────────────────────
    ⚠️ `npm run doctor` reads this. `drift.mjs` already wrote down why a caller
    must never parse prose: it breaks the first time somebody improves the

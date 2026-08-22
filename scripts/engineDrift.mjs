@@ -113,6 +113,11 @@ const NAME_PATTERNS = [
   /^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/gm,
   /^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/gm,
   /^\s*(?:export\s+)?class\s+([A-Za-z_$][\w$]*)/gm,
+  /* ⚠️ `const f = function (…)` and `const f = async function (…)`. Latent
+     today — measured, zero top-level function expressions in any real
+     `worker.js` — but a name written this way was invisible, and invisible is
+     how this tool reports clean over a real gap. */
+  /^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\b/gm,
 ];
 
 function namesIn(src) {
@@ -318,10 +323,31 @@ function report(r) {
     return;
   }
 
-  if (!mineOnly.length && !theirsOnly.length) {
+  /* ⛔⛔ "No drift" IS ONLY SAID WHEN THERE IS GENUINELY NOTHING, AND THE FIRST
+     VERSION OF THIS GOT IT WRONG — printing it while holding a list of names
+     that sit in different files, and returning before that list rendered.
+
+     ⇒ A NAME MISSING FROM `worker.js` BUT PRESENT IN ANY OTHER FILE OVER THERE
+     WAS CLASSED "elsewhere", AND IF THAT WAS THE ONLY DIFFERENCE THE TOOL SAID
+     "No drift". Reproduced: hubB's `worker.js` really was missing a function,
+     an unrelated function of the same name sat in `misc.js`, and the report
+     read clean. That is this tool's WORST failure mode, because its healthy
+     output and its blind output are the same sentence — and it is exactly what
+     the tool was built to stop happening to a fix. Found by a Fable audit the
+     same day it shipped.
+
+     ⚠️ THE COLLISIONS STILL DO NOT COUNT AS MISSING, and `--summary` still
+     reports them separately, so `npm run doctor` stays quiet about them. What
+     changed is that the report may no longer claim there is nothing to see
+     while it is holding something to see. */
+  if (!mineOnly.length && !theirsOnly.length && !moved.length) {
     console.log(`  No drift against ${otherName}.`);
     console.log(`  ${sameFiles.length} of ${sameFiles.length + differing.length} shared engine files are identical; the rest differ only in their lines.`);
     return;
+  }
+
+  if (!mineOnly.length && !theirsOnly.length) {
+    console.log(`  Nothing is missing either way against ${otherName}.`);
   }
 
   const say = (who, other, list) => {
@@ -338,7 +364,7 @@ function report(r) {
     console.log(`  Probably moved, possibly just the same word twice. Not a missing fix either way:`);
     for (const line of moved) console.log(`    ${line}`);
   }
-  console.log(`  Everything else matches.`);
+  if (mineOnly.length || theirsOnly.length) console.log(`  Everything else matches.`);
 }
 
 /* ── Run ─────────────────────────────────────────────────────────────────── */
