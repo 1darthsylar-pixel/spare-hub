@@ -2551,7 +2551,44 @@ async function leadersOnRoster(env) {
 function plainFromSlack(text) {
   return String(text == null ? "" : text)
     .replace(/<!channel>|<!here>/g, "")
+    /* ⛔⛔ A SLACK USER ID IS NOT A NAME, AND IT WAS REACHING HUB SCREENS.
+       Measured Aug 22 2026 in the live record: 5 of the 19 announcements in
+       `gcfcr-announcements-v1` carried markup that means nothing outside
+       Slack, four of them a raw id —
+
+           "<@U06FCRAP98R> is assigned today (Bath rotation)."
+
+       A leader opening the Hub read a user id where a person's name should be.
+       Nothing errors, so nobody reports it; it just quietly makes the Hub copy
+       worse than the Slack one, on the screens this store is moving ONTO.
+
+       ⚠️ THE PIPE FORM KEEPS ITS LABEL, the bare form goes. `<@U1|Lizbeth>`
+       still reads as a person; `<@U1>` is noise whatever we do with it.
+       ⚠️ IT EATS ONE FOLLOWING SPACE so a removed mention does not leave a
+       double gap mid-sentence.
+       ⚠️⚠️ THIS IS THE NET, NOT THE FIX. Dropping a bare mention leaves a hole
+       (" is assigned today"), which is why `runFoodSafetyAssign` hands the Hub
+       the NAME it already has. This arm is for the call site nobody has
+       written yet. */
+    .replace(/<@[UW][A-Z0-9]*\|([^>]*)>/g, "$1")
+    .replace(/<@[UW][A-Z0-9]*> ?/g, "")
+    .replace(/<#C[A-Z0-9]*\|([^>]*)>/g, "$1")
+    .replace(/<#C[A-Z0-9]*> ?/g, "")
+    /* A link keeps its words. `<url|label>` reads as the label in Slack and as
+       angle-bracket noise anywhere else; a bare `<url>` is just the address. */
+    .replace(/<(https?:[^>|]+)\|([^>]*)>/g, "$2")
+    .replace(/<(https?:[^>]+)>/g, "$1")
+    /* ⚠️⚠️ A TIME IS NOT AN EMOJI, AND THIS STORE'S MESSAGES ARE FULL OF TIMES.
+       `:[a-z0-9_]+:` also matches the middle of "9:30:15" and would have the
+       Hub silently eating the clock. Requiring a LETTER first is the whole
+       guard, and the test pins both directions. */
+    .replace(/:[a-z][a-z0-9_+-]*: ?/g, "")
     .replace(/\*/g, "")
+    /* ⚠️ SLACK ITALICS, AND THE REASON THIS ONE IS FUSSY. `_Food Focus_` was
+       printing its underscores on the Hub. A bare `/_/g` like the asterisk rule
+       above would also gut `snake_case_names`, so the content has to contain a
+       SPACE — a phrase, never an identifier. Both directions are pinned. */
+    .replace(/_([^_\n]*\s[^_\n]*)_/g, "$1")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
