@@ -79,6 +79,13 @@ const NAME_RUN = /[A-Za-z][A-Za-z'’.\-]*(?:\s+[A-Za-z][A-Za-z'’.\-]*)*/;
    ⇒ A cell reading just "Ashley" on a day with two of them matches NOBODY and
    is left exactly as typed.
    ══════════════════════════════════════════════════════════════════════════ */
+/* ⚠️⚠️ STRICTER THAN `boardOwner.sharedFirstNames` ON PURPOSE, AND IT MUST
+   STAY THAT WAY. That one is permissive because its failure is a person not
+   being told about their own shift. This one is strict because its failure is
+   somebody else's name printed in a box. Importing that one here would
+   silently make this permissive and put the wrong name on a board.
+   ⇒ Guarded by `sharedFirstNames.test.mjs`, which runs both and fails if this
+   one ever becomes the more permissive of the two. */
 function sharedFirstNames(people) {
   const seen = new Map();
   (people || []).forEach((p) => {

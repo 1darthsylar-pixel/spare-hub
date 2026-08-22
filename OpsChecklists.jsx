@@ -1,8 +1,10 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
+import SectionBand from "./SectionBand.jsx";
 /* The one raised look and accent edge — see cardStyle.js. */
 import { CARD_3D, accentEdge, cardSurface } from "./cardStyle.js";
 import { Check, Plus, X, Pencil } from "lucide-react";
 import { kvGet, kvGetResult, kvSet } from "./store";
+import { activeDaypart } from "./dayparts.js";
 
 // Gate City Ops Checklists — Leader / FOH / BOH daily checklists.
 //
@@ -31,15 +33,46 @@ const SECTION_META = {
 /* ★ ALL SITS LAST (Matt, Aug 5 2026: "chcklists - i want the all at the end").
    The three real filters run in the order the day runs, and All is the escape
    hatch rather than the first thing to read past.
-   ⚠️ THE DEFAULT IS PINNED BY ID, not by position: `useState("all")` below. So
-   this list can be reordered freely and the tile still opens on All. If that
-   ever becomes SHIFTS[0], reordering silently changes what leaders see first. */
+   ⚠️ THE DEFAULT IS PINNED BY ID, not by position — see `openingTab` below. So
+   this list can be reordered freely and the tile still opens on the right tab.
+   If that ever becomes SHIFTS[0], reordering silently changes what leaders see
+   first. */
 const SHIFTS = [
   { id: "opening", label: "Opening" },
   { id: "midday", label: "Midday" },
   { id: "closing", label: "Closing" },
   { id: "all", label: "All" },
 ];
+
+/* ── WHICH TAB OPENS ─────────────────────────────────────────────────────────
+   Matt, Aug 18 2026: "the ops checklists defaults to all when opening. i want
+   it to default to the active daypart."
+
+   ⚠️⚠️ THE STORE'S FOUR DAYPARTS DO NOT MATCH THIS TILE'S THREE TABS, and that
+   mismatch is the whole of the work. `stations.dayparts` is Breakfast, Lunch,
+   Mid and Night; the checklists run Opening, Midday and Closing. So the mapping
+   is by POSITION, not by name: the store's first window is the opening one, its
+   last is the closing one, and everything between is midday.
+
+   ★ POSITION SURVIVES A CLONE, A NAME DOES NOT. A store that calls its windows
+   AM / Rush / PM gets the right tab from this and would get nothing from a
+   lookup keyed on "breakfast". Rule 18: the numbers and the names are theirs.
+
+   ⚠️ IT FALLS BACK TO "all", WHICH IS EXACTLY THE OLD BEHAVIOUR. A store with
+   fewer than two dayparts typed in, or a clock that answers nothing, lands on
+   the tab this tile has always opened on rather than a guessed one.
+
+   ⚠️ IT IS THE OPENING TAB, NOT A LOCK. `useState` reads it once, so a leader
+   who taps All or Closing stays there for the rest of the visit. A tile that
+   re-snapped to the clock mid-shift would move the list under somebody's
+   finger during a rush. */
+const openingTab = () => {
+  const d = activeDaypart();
+  if (!d || d.total < 2) return "all";
+  if (d.index === 0) return "opening";
+  if (d.index === d.total - 1) return "closing";
+  return "midday";
+};
 
 const PREFIX_MAP = { opener: "opening", midday: "midday", closing: "closing" };
 const PREFIX_RE = /^(opener|midday|closing)\s*[\u2014\u2013-]\s*/i;
@@ -488,7 +521,10 @@ export default function OpsChecklists({ tier, user }) {
   const [done, setDone] = useState({});
   const [doneLoaded, setDoneLoaded] = useState(false);
   const [section, setSection] = useState("FOH");
-  const [shift, setShift] = useState("all");
+  /* ⚠️ THE INITIALISER IS A FUNCTION, NOT A CALL. `useState(openingTab())` would
+     re-read the clock on every single render and throw the result away; passing
+     the function means React calls it exactly once, on mount. */
+  const [shift, setShift] = useState(openingTab);
   const [editMode, setEditMode] = useState(false);
   const [draftText, setDraftText] = useState({});
   const [newAreaTitle, setNewAreaTitle] = useState("");
@@ -926,20 +962,29 @@ export default function OpsChecklists({ tier, user }) {
                 boxShadow: CARD_3D,
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  marginBottom: 8,
-                }}
-              >
-                <span style={{ fontSize: 15, fontWeight: 700 }}>{area.title}</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 12, color: "#6B7280" }}>
-                    {doneCount}/{total}
-                  </span>
+              {/* ⭐ THE SHARED BAND, NOT A BOLD SPAN. Matt, Aug 20 2026: "the
+                  title rows for each block can be enhanced." It was a 15px bold
+                  word and a grey fraction, on a card that already carried a
+                  coloured rail the title made no use of.
+                  ⚠️ THE COUNT KEEPS ITS OWN CHIP through `right`, because
+                  "4/11" is a fraction and the band's default chip is a total.
+                  It goes green when the block is finished, which is the one
+                  thing a leader walking past wants to see. */}
+              <SectionBand
+                label={area.title}
+                color={meta.color}
+                right={
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{
+                      fontSize: 11, fontWeight: 800, letterSpacing: ".03em",
+                      fontVariantNumeric: "tabular-nums", padding: "2px 9px", borderRadius: 999,
+                      color: total > 0 && doneCount === total ? "#fff" : "#6B7280",
+                      background: total > 0 && doneCount === total ? "#3F8F5F" : "#fff",
+                      border: `1px solid ${total > 0 && doneCount === total ? "#3F8F5F" : "#E5E7EB"}`,
+                      whiteSpace: "nowrap",
+                    }}>
+                      {doneCount}/{total}
+                    </span>
                   {editMode && (
                     <button
                       onClick={() => deleteArea(area.id)}
@@ -961,7 +1006,8 @@ export default function OpsChecklists({ tier, user }) {
                     </button>
                   )}
                 </div>
-              </div>
+                }
+              />
 
               <div style={{ marginBottom: 10 }}>
                 <ProgressBar pct={pct} color={meta.color} />

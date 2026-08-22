@@ -41,6 +41,14 @@ group("1. every title in the ladder, run rather than reasoned about");
      Deriving the expectation from the same rank the code reads would assert
      nothing at all — it would be the implementation checking itself. */
   const WANT = {
+    /* ★ `Support` is the HOST, not one of the store's people. Tier 3 because a
+       host who cannot open HR Console cannot support anything — the same
+       reasoning as Owner, graded separately here on purpose so the tier is a
+       decision and not a side effect of its rank.
+       ⚠️ TIER 3 IS THE ACCESS HALF ONLY. Being left OUT of headcount, turnover,
+       the accountability chart and the team directory is a different pass and
+       is NOT built. See the host-role spec in CLAUDE.md. */
+    Support: 3,
     Owner: 3, "Human Resources": 3, "Accounts Payable": 3, Executive: 3,
     "Executive Director": 3, "Leadership Director": 3, "Leadership Development Director": 3,
     Director: 2, "Assistant Director": 2, Manager: 2,

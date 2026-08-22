@@ -1,7 +1,7 @@
 {
-  "name": "Gate City Hub",
-  "short_name": "Gate City Hub",
-  "description": "The Gate City Chick-fil-A operations platform.",
+  "name": "SET-THIS-TO-THE-STORE-NAME Hub",
+  "short_name": "SET-THIS-TO-THE-STORE-NAME Hub",
+  "description": "The SET-THIS-TO-THE-STORE-NAME Chick-fil-A operations platform.",
   "id": "/",
   "start_url": "/?source=pwa",
   "scope": "/",

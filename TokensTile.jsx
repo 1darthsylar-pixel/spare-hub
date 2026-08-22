@@ -14,6 +14,7 @@ import { bareId } from "./nameMatch.js";
    `node tokens.test.mjs`, 88 assertions. If you change tokens.js, run it. */
 import { TYPES, makeEntry, makeReversal, makeRedemption, balanceOf, historyFor,
   entriesFor, balanceIn, balances, append, shopFor, catalogList } from "./tokens.js";
+import { reasonOptions, fillFor, unaddedSuggestions } from "./starReasons.js";
 
 /**
  * TokensTile.jsx — the token ledger, on screen.
@@ -214,6 +215,7 @@ function LeaderPanel({ ledger, rows, roster, nameOf, user, catalog, setCatalog, 
   const [amt, setAmt] = useState("");
   const [why, setWhy] = useState("");
   const [item, setItem] = useState("");
+  const [pick, setPick] = useState("");
   const [newItem, setNewItem] = useState("");
   const [newCost, setNewCost] = useState("");
   const byId = bareId(user && user.id);
@@ -284,6 +286,32 @@ function LeaderPanel({ ledger, rows, roster, nameOf, user, catalog, setCatalog, 
             <div style={{ fontSize: 13, color: C.sub, margin: "2px 0 10px" }}>
               {nameOf(who)} has <b style={{ color: C.ink }}>{unit(theirBalance)}</b>.
             </div>
+
+            {/* ⭐⭐ THE REASONS BRI SET, PICKABLE. Matt, Aug 20 2026: "We still
+                need the stars system to be complete. Refer to Bri and Hannah
+                slack." Nothing about the ledger was missing — the balances,
+                reversals, shop and spend path all worked. What was missing is
+                that the ANSWERS lived only in Slack, so a leader got an empty
+                number box and an empty sentence box and had to invent both.
+                ⚠️ IT FILLS THE BOXES, IT DOES NOT REPLACE THEM. The leader can
+                still change either before pressing Give, and "Something else"
+                leaves both alone. The list is a shortcut, never a gate. */}
+            <select
+              value={pick}
+              onChange={(e) => {
+                const id = e.target.value;
+                setPick(id);
+                const f = fillFor(id);
+                if (f) { setWhy(f.reason); setAmt(f.amount); }
+              }}
+              style={{ ...inp, marginBottom: 8 }}>
+              <option value="">What did they do?</option>
+              {reasonOptions().map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.reason}{o.amount ? ` · +${o.amount}` : ""}
+                </option>
+              ))}
+            </select>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
               <input value={amt} onChange={(e) => { const v = e.target.value; setAmt(v); }}
@@ -362,6 +390,34 @@ function LeaderPanel({ ledger, rows, roster, nameOf, user, catalog, setCatalog, 
             }}
             style={btn(true)}>Add</button>
         </div>
+
+        {/* ⭐ BREAK FOOD, ONE TAP AT A TIME. Matt, Aug 20 2026: "break food is
+            the reward." That answers the half of the question Hannah left open
+            in August — her side was "subject to gift card prizes", which was
+            always meant to become the things people spend on.
+            ⚠️⚠️ SUGGESTED, NEVER WRITTEN. What a star buys is the store's own
+            data and belongs in the store's record, not in source (rule 18).
+            Tapping one adds it exactly as if it had been typed, and the cost is
+            editable the moment it lands. A store that renames or re-prices one
+            keeps its own version, because the match is on the NAME.
+            ⚠️ THE PRICES ARE A LADDER, NOT A POLICY. Nobody has set them. They
+            are laid out so the shape is obvious, not so the figures are right. */}
+        {unaddedSuggestions(catalog).length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12, color: C.sub, marginBottom: 6 }}>
+              Break food, if you want it. Tap to add, then change the cost.
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {unaddedSuggestions(catalog).map((s) => (
+                <button key={s.name}
+                  onClick={() => saveCatalog([...catalog, { name: s.name, cost: s.cost, active: true }])}
+                  style={{ ...btn(false), fontSize: 12, padding: "6px 10px" }}>
+                  + {s.name} · {unit(s.cost)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </Section>
     </>
   );

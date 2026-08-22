@@ -18,7 +18,7 @@
 // -----------------------------------------------------------------------------
 
 import { eosPeriod } from "./eosPeriod.js";
-import { SL_METRIC_DEFS, SL_LEAD_SLOTS, slCreditedFor, slOwnerTagsFor, SCAN_GREEN, SCAN_AMBER, TX_BANDS_FALLBACK, SOS_GREEN, SOS_RED, AHA_GREEN, AHA_RED } from "./slScorecardDefs.js";
+import { SL_METRIC_DEFS, SL_LEAD_SLOTS, SL_DAYPART_KEYS, slParseMSS, slFmtMSS, slCreditedFor, slOwnerTagsFor, SCAN_GREEN, SCAN_AMBER, TX_BANDS_FALLBACK, SOS_GREEN, SOS_RED, AHA_GREEN, AHA_RED } from "./slScorecardDefs.js";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 // claude-sonnet-5 = best prose. Swap to claude-haiku-4-5-20251001 for lower cost
@@ -542,7 +542,8 @@ export async function readDigest(kv, dateStr) {
 
 const SL_DAILY = (d) => `gcfcr-sl-daily-${d}-v1`;
 const SL_GOALS = "gcfcr-sl-goals-v1";
-const SL_DAYPARTS = ["breakfast", "lunch", "afternoon", "dinner"];
+/* ⚠️ WAS A LOCAL COPY OF THE SAME FOUR STRINGS — see SL_DAYPARTS in the leaf. */
+const SL_DAYPARTS = SL_DAYPART_KEYS;
 /* 🐛 THIS FILE USED TO OWN A SECOND COPY OF THIS TABLE AND IT HAD DRIFTED
    (Aug 4 2026). It credited DT SOS to the FRONT COUNTER lead — the Scorecard
    owns it under "dt" — so a front counter lead was told their drive-thru time
@@ -559,24 +560,8 @@ const SL_CARS_GOAL_DEFAULT = 165;
    scan/transaction bands already come from. Do not re-declare them here. */
 const RAG_WORD = { green: "on track", amber: "watch", red: "off track", gray: "no data" };
 
-function slParseMSS(raw) {
-  if (raw === null || raw === undefined) return null;
-  const s = String(raw).trim();
-  if (s === "") return null;
-  if (s.includes(":")) {
-    const parts = s.split(":");
-    const m = Number(parts[0]), sec = Number(parts[1]);
-    if (Number.isNaN(m) || Number.isNaN(sec)) return null;
-    return m * 60 + sec;
-  }
-  const n = Number(s);
-  return Number.isNaN(n) ? null : n;
-}
-function slFmtMSS(sec) {
-  if (sec === null || sec === undefined) return "—";
-  const s = Math.round(sec);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
+/* ⚠️ slParseMSS and slFmtMSS moved to the leaf — imported above. Two copies of
+   the M:SS reader is how one side starts averaging blanks as zero. */
 // mirror ShiftLeaderScorecard scoreMetric → RAG word only (digest shows value + status)
 function slRag(m, value, carsGoal) {
   if (value === null || value === undefined || value === "") return "gray";

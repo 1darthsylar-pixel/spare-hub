@@ -134,6 +134,23 @@ export default function ManualTile({ sections = [], tier = 1, user, onOpenTool, 
                   )}
                 </div>
                 <div style={{ fontSize: 13.5, color: C.sub, marginTop: 4, lineHeight: 1.5 }}>{t.desc}</div>
+                {/* ★★ THE HALVES OF A MERGED TOOL, Aug 18 2026. Three tools
+                    became tabs rather than tiles, and a manual that lists only
+                    tiles stopped mentioning them at all — on the one screen
+                    whose entire job is saying what this Hub can do.
+                    ⚠️ ONLY DRAWN ABOVE ONE. A tool with a single open tab is
+                    just a tool, and naming its own name back at the reader is
+                    noise. A tool whose second half is gated to a named list
+                    shows one, so the manual cannot hint at a screen the reader
+                    will never be allowed to open.
+                    ⚠️ `t.tabs` ARRIVES ALREADY FILTERED, by the same gate the
+                    tool screen uses (see sectionsFor in App.jsx). This file
+                    does not decide who sees what. */}
+                {Array.isArray(t.tabs) && t.tabs.length > 1 && (
+                  <div style={{ fontSize: 12.5, color: C.faint, marginTop: 5, lineHeight: 1.5 }}>
+                    Two screens inside it: {t.tabs.map((tb) => tb.label).join(" · ")}
+                  </div>
+                )}
               </div>
             ))}
           </div>

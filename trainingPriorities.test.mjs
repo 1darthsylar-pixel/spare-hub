@@ -12,6 +12,7 @@ import {
   TRAINING_KEY, TRAINING_SIDES, MODES, DEFAULT_MODE,
   readTraining, isWriteMode, setMode, setList, parseList,
   priorityRank, heldCodes, isTrainingPlacement, trainingGaps, nextToTrain,
+  moveInList, collapseFamilies, mergeCodes,
 } from "./trainingPriorities.js";
 
 let pass = 0;
@@ -340,9 +341,185 @@ const STORED = {
   }
 }
 
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ADDED Aug 18 2026 — THE STORE'S MERGES REACH THE TRAINING BADGE.
+
+   ⚠️⚠️ THEY DID NOT, AND THAT WAS THE WHOLE POINT OF TYPING THEM. `readMerges`
+   exists because the trailing-number guess gets some boards wrong, and its own
+   header says so. But `isTrainingPlacement` — the one function that decides
+   whether standing somewhere counts as learning it — asked the guess anyway.
+
+   ⇒ A store declares two rows are one position, and somebody already rated on
+   one of them still badged as IN TRAINING on the other, on a printed board,
+   every day, for ever. Nothing on any screen said the setting was doing half
+   a job.
+
+   ⚠️ THE GROUPS ARE OPTIONAL AND ABSENT IS THE OLD ANSWER, which is what makes
+   this safe for every existing caller (rule 1). Asserted below, not promised.
+
+   ⚠️ Generic names on purpose. A test that types this store's stations into a
+   shared file is the rule-18 failure the check above already guards. */
+{
+  const { isTrainingPlacement: itp, mergeCodes: mc, readTraining: rt } =
+    await import("./trainingPriorities.js");
+
+  const base = rt({ v: 1, sides: { FOH: ["ALPHA ONE", "BETA"], BOH: [] } });
+  const declared = mc(base, "FOH", ["ALPHA ONE", "BETA"]).merges.FOH;
+
+  ok("★★ WITHOUT THE GROUPS, HOLDING ONE STILL READS AS TRAINING ON THE OTHER",
+    itp(["ALPHA ONE"], "BETA") === true);
+  ok("★★ WITH THE STORE'S GROUP, IT DOES NOT",
+    itp(["ALPHA ONE"], "BETA", declared) === false,
+    JSON.stringify(declared));
+  ok("★ and it reads both ways round",
+    itp(["BETA"], "ALPHA ONE", declared) === false);
+
+  ok("★ somebody who holds neither is still learning it",
+    itp(["GAMMA"], "BETA", declared) === true);
+  ok("★ a row in no group is unaffected by somebody else's group",
+    itp(["ALPHA ONE"], "GAMMA", declared) === true);
+
+  /* Rule 1: the two-argument call every existing caller makes is untouched. */
+  ok("★★ NO GROUPS IS BYTE-FOR-BYTE THE OLD ANSWER",
+    itp(["ALPHA ONE"], "BETA") === itp(["ALPHA ONE"], "BETA", [])
+      && itp(["ALPHA ONE"], "BETA", undefined) === true);
+  ok("★ the trailing-number rule still works with no groups at all",
+    itp(["ALPHA 1"], "ALPHA 2") === false);
+  ok("★ nobody rated at all is learning everything", itp([], "BETA", declared) === true);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   🐛 THE SAME MERGE BUG, ONE FUNCTION DOWN — `trainingGaps`. Aug 18 2026.
+
+   It collapsed the store's LIST through the declared groups and then compared
+   what somebody holds against the trailing-number guess. So a store that has
+   said "these two rows are one position" still had the tool telling a person
+   rated on one of them to go and learn the other — the exact thing declaring
+   the merge was supposed to stop.
+
+   ⚠️ THIS BLOCK IS ABOVE THE SUMMARY ON PURPOSE. Three test files in this repo
+   have now had assertions appended BELOW their own summary line, where they
+   run and cannot fail the build.
+   ══════════════════════════════════════════════════════════════════════════ */
+{
+  group("trainingGaps honours the store's merges");
+  const { trainingGaps: tg, nextToTrain: nt, mergeCodes: mc } =
+    await import("./trainingPriorities.js");
+
+  const base = { v: 1, mode: "suggest", sides: { FOH: ["ALPHA ONE", "BETA", "GAMMA"], BOH: [] } };
+  const declared = mc(base, "FOH", ["ALPHA ONE", "BETA"]);
+
+  ok("★ with no merge declared, holding one leaves the other on the list",
+    tg(["ALPHA ONE"], "FOH", base).join("|") === "BETA|GAMMA",
+    tg(["ALPHA ONE"], "FOH", base).join("|"));
+
+  /* The merge collapses the LIST to two positions, and holding either member
+     must clear that position rather than leaving its twin behind. */
+  ok("★★ THE MERGED POSITION IS GONE FROM THE GAPS WHEN EITHER HALF IS HELD",
+    tg(["ALPHA ONE"], "FOH", declared).join("|") === "GAMMA",
+    tg(["ALPHA ONE"], "FOH", declared).join("|"));
+  ok("★★ AND IT READS BOTH WAYS ROUND",
+    tg(["BETA"], "FOH", declared).join("|") === "GAMMA",
+    tg(["BETA"], "FOH", declared).join("|"));
+
+  ok("★ somebody who holds neither still has the merged position to learn",
+    tg(["GAMMA"], "FOH", declared).join("|") === "ALPHA ONE",
+    tg(["GAMMA"], "FOH", declared).join("|"));
+  ok("★ and the next-one convenience agrees with the list it reads",
+    nt(["GAMMA"], "FOH", declared) === "ALPHA ONE"
+      && nt(["ALPHA ONE"], "FOH", declared) === "GAMMA");
+  ok("★ holding one of each clears the board",
+    tg(["BETA", "GAMMA"], "FOH", declared).length === 0);
+
+  /* Rule 1: a record with no merges answers exactly as it did before. */
+  ok("★★ A RECORD WITH NO MERGES IS UNCHANGED, BYTE FOR BYTE",
+    tg(["ALPHA ONE"], "FOH", base).join("|") === "BETA|GAMMA"
+      && tg([], "FOH", base).join("|") === "ALPHA ONE|BETA|GAMMA");
+  /* ⚠️ "ALPHA ONE" IS NOT A NUMBERED ROW — the word is not a digit — so the
+     trailing-number rule needs a genuinely numbered pair to be graded. Written
+     the other way first and it failed correctly: the assertion was wrong, not
+     the code. */
+  const numbered = { v: 1, mode: "suggest", sides: { FOH: ["DELTA 1", "BETA"], BOH: [] } };
+  ok("★ the trailing-number rule still stands on its own, with no merge declared",
+    tg(["DELTA 2"], "FOH", numbered).join("|") === "BETA",
+    tg(["DELTA 2"], "FOH", numbered).join("|"));
+  ok("★ an empty list is still a working state", tg([], "BOH", declared).length === 0);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MOVING A PRIORITY — and the one way it could quietly lose somebody's list.
+
+   Matt, Aug 21 2026: "these training priorities regressed. i had them arranged
+   yesterday." Nothing had regressed. Read from the store's own record, no save
+   had happened since Aug 14 — because there was no way to reorder at all.
+
+   ⛔ THE FAILURE THIS SECTION EXISTS FOR is not a wrong order, it is a SHORTER
+   LIST. `sides` is the collapsed view; rebuilding the raw list from it drops
+   every folded code, which is the destructive collapse `readTraining` already
+   records ("un-merging OT left the list at nine"). So the assertion that
+   matters most below is a set comparison, not an order comparison.
+   ══════════════════════════════════════════════════════════════════════════ */
+group("moveInList");
+{
+  /* Invented, real-shaped: ten rows with a three-code family in the middle. */
+  const base = readTraining({
+    v: 1, mode: "suggest",
+    rawSides: { FOH: ["ALPHA", "BRAVO", "CHARLIE 1", "CHARLIE 2", "CHARLIE 3", "DELTA", "ECHO"], BOH: [] },
+    merges: { FOH: [], BOH: [] },
+  });
+  const shown = (r) => collapseFamilies(r.rawSides.FOH, r.merges.FOH);
+  const bag = (a) => [...a].sort().join("|");
+
+  ok("control: the fixture collapses the numbered family to one row",
+    shown(base).length === 5, shown(base).join("|"));
+  ok("control: and the raw list still holds all seven",
+    base.rawSides.FOH.length === 7);
+
+  const up = moveInList(base, "FOH", "DELTA", "up");
+  ok("★★ a row moves up one place", shown(up)[2] === "DELTA", shown(up).join("|"));
+  ok("★ and the row it passed moved down", shown(up)[3] === "CHARLIE 1", shown(up).join("|"));
+  ok("★★ NO RAW CODE IS LOST — the whole bug this could have",
+    bag(up.rawSides.FOH) === bag(base.rawSides.FOH),
+    `${up.rawSides.FOH.length} of ${base.rawSides.FOH.length}`);
+
+  const dn = moveInList(base, "FOH", "BRAVO", "down");
+  ok("★★ a row moves down one place", shown(dn)[1] === "CHARLIE 1", shown(dn).join("|"));
+  ok("★ raw preserved moving down", bag(dn.rawSides.FOH) === bag(base.rawSides.FOH));
+
+  /* ⚠️ THE FAMILY IS A BLOCK. Moving it must not interleave its members with
+     the row it passes, which is what a naive index swap on the raw list does. */
+  const famUp = moveInList(base, "FOH", "CHARLIE 1", "up");
+  const rw = famUp.rawSides.FOH;
+  ok("★★ a folded family moves as ONE block",
+    rw.indexOf("CHARLIE 3") - rw.indexOf("CHARLIE 1") === 2, rw.join("|"));
+  ok("★ and nothing landed between its members",
+    rw.slice(rw.indexOf("CHARLIE 1"), rw.indexOf("CHARLIE 3") + 1).join("|") === "CHARLIE 1|CHARLIE 2|CHARLIE 3");
+  ok("★ raw preserved moving a family", bag(rw) === bag(base.rawSides.FOH));
+
+  /* ⚠️ A DECLARED MERGE BEHAVES THE SAME AS A NUMBERED ONE. */
+  const merged = mergeCodes(base, "FOH", ["ALPHA", "ECHO"]);
+  const mUp = moveInList(merged, "FOH", "ECHO", "down");
+  ok("★ a member of a declared merge moves its whole family",
+    bag(mUp.rawSides.FOH) === bag(merged.rawSides.FOH), mUp.rawSides.FOH.join("|"));
+
+  /* ⚠️ THE ENDS DO NOT WRAP. */
+  ok("★★ the top row cannot go up", shown(moveInList(base, "FOH", "ALPHA", "up")).join("|") === shown(base).join("|"));
+  ok("★★ the bottom row cannot go down", shown(moveInList(base, "FOH", "ECHO", "down")).join("|") === shown(base).join("|"));
+
+  /* ⚠️ JUNK NEVER THROWS AND NEVER EMPTIES A LIST. */
+  for (const [side, code, dir] of [["FOH", "NOPE", "up"], ["NOSUCH", "ALPHA", "up"], ["FOH", "ALPHA", "sideways"], ["FOH", "", "up"]]) {
+    const r = moveInList(base, side, code, dir);
+    ok(`★ junk is a no-op, not a wipe (${side}/${code}/${dir})`,
+      bag(r.rawSides.FOH || []) === bag(base.rawSides.FOH));
+  }
+  ok("★ a null record does not throw", (() => { try { moveInList(null, "FOH", "ALPHA", "up"); return true; } catch { return false; } })());
+}
+
 if (fails.length) {
   console.log(`trainingPriorities: ${pass} passed, ${fails.length} FAILED`);
   fails.forEach((f) => console.log("  FAIL  " + f));
   process.exit(1);
 }
+
 console.log(`trainingPriorities: ${pass} passed`);

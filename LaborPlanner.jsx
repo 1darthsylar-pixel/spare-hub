@@ -49,7 +49,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 /* The one raised look, shared with every tool — see cardStyle.js. */
-import { CARD_3D, cardSurface, CARD_3D_SOFT, accentEdge } from "./cardStyle.js";
+import { CARD_3D, cardSurface, CARD_3D_SOFT, accentEdge, notePanel } from "./cardStyle.js";
 import { kvGet, kvSet, kvGetResult, publishSharedRows, hubToken } from "./store";
 import PasteMonth from "./PasteMonth.jsx";
 import { parseDaypartPaste, parseLaborBenchPaste } from "./pasteImports.js";
@@ -60,6 +60,10 @@ import MonthYearPicker from "./MonthYearPicker.jsx";
    payroll-window trust rule without a circular dependency. Do not replace these
    with a FCRPage import. */
 import { laborWindow, laborRow } from "./laborWindow.js";
+/* The store's own holiday hours. Read at CALL time in holPolicy() below,
+   never at module scope: applyStoreOverrides runs after this file is
+   imported, so a module-level read freezes the shipped default. */
+import { storeCfg } from "./storeConfig.js";
 /* Leaf, imports nothing. dtShareOfFoh reads Sales Allocation's own day shape. */
 import { dtShareOfFoh } from "./dayparts.js";
 import CalendarGrid from "./CalendarGrid.jsx";
@@ -99,13 +103,48 @@ import {
   monthProjectedFinish as engineMonthProjectedFinish,
 } from "./laborEngine.js";
 export { plannerKey, dayBudget };
-export const monthLaborCard = (ym, dow) => engineMonthLaborCard(ym, dow, kvGet);
-export const monthLaborPlan = (ym) => engineMonthLaborPlan(ym, kvGet);
-export const monthForecastTotal = (ym) => engineMonthForecastTotal(ym, kvGet);
+
+/* ⛔⛔ THE HOLIDAY BASIS WAS BUILT, TESTED AND WIRED TO NOTHING. Fixed Aug 21
+   2026, the day it was found, hours after the hours themselves were typed in.
+
+   🐛 `loadMonthBasis(ym, get, policy)` folds the holiday sales basis into
+   `p.holiday`, and `forecastFor` reads it. Measured by RUNNING the real path
+   rather than reading it: **not one of the eight call sites passed a third
+   argument**, so `policy` was always undefined, `holidayBasisFor` returned `{}`
+   on its first line, and `p.holiday` was empty every single time. The whole
+   holiday arm of `forecastFor` was dead code in the shipped app.
+
+   ⇒ WHAT THAT COST. Christmas Eve is a Thursday. The planner forecast a full
+   Thursday's sales and budgeted a full Thursday's hours, on a day that shuts at
+   four — and Christmas Day, which is closed, budgeted a crew. Matt typed the
+   real figures into Store Settings and nothing read them. Nothing errored,
+   because an empty map is exactly what a store with no holiday policy has.
+
+   ★ AND NO TEST COULD HAVE CAUGHT IT. `holidayBasisFor` was tested by handing
+   it a policy directly, which is the one thing the app never does. The same
+   shape as `HUB_SCHEDULE_PULL_READY` and the announcement filter in this
+   codebase's own history: correct at the leaf, reaching nobody.
+
+   ⚠️⚠️ THIS IS THE ONE PLACE THE BROWSER BINDS, AND THAT IS WHY THE FIX IS
+   HERE. Every screen calls these wrappers, never the engine, so binding the
+   policy beside `kvGet` is ONE site rather than eight chances to miss one — the
+   exact risk `loadMonthBasis`'s own comment warned about.
+   ⚠️ READ AT CALL TIME, NEVER AT MODULE SCOPE. `applyStoreOverrides` runs after
+   this file is imported, so a `const POLICY = storeCfg(...)` up here would
+   freeze the shipped default and never see what the store saved. That is the
+   same bug `swapPolicy` had in Availability.jsx.
+   ⚠️ `laborEngine.js` STILL IMPORTS ONLY ZERO-IMPORT LEAVES, which its header
+   requires so it stays runnable from the Worker. The config is read HERE and
+   handed in. Do not import storeConfig.js into the engine to save this line. */
+const holPolicy = () => storeCfg("holidays", null);
+
+export const monthLaborCard = (ym, dow) => engineMonthLaborCard(ym, dow, kvGet, holPolicy());
+export const monthLaborPlan = (ym) => engineMonthLaborPlan(ym, kvGet, holPolicy());
+export const monthForecastTotal = (ym) => engineMonthForecastTotal(ym, kvGet, holPolicy());
 export const monthNonOpHours = (ym, throughIso) => engineMonthNonOpHours(ym, throughIso, kvGet);
-export const monthProductivityGoal = (ym) => engineMonthProductivityGoal(ym, kvGet);
+export const monthProductivityGoal = (ym) => engineMonthProductivityGoal(ym, kvGet, holPolicy());
 export const resolvePlannedWage = (ym, cfg, tierCfg) => engineResolvePlannedWage(ym, cfg, tierCfg, kvGet);
-export const monthProjectedFinish = (ym) => engineMonthProjectedFinish(ym, kvGet);
+export const monthProjectedFinish = (ym) => engineMonthProjectedFinish(ym, kvGet, holPolicy());
 
 const NAVY = "#1B3A5C", RED = "#DD0031", INK = "#232A31", GRAY = "#6B7480",
       LINE = "#E3E7EC", BG = "#F6F8FA", GREEN = "#166B4A", AMBER = "#7A5A00";
@@ -814,7 +853,7 @@ function DaypartLabor({ tierCfg, onNonOpsSaved, onOpsSaved, onMonthsSaved }) {
 
           {/* monthly nudge */}
           {!edit && stale && (
-            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", backgroundColor: "#FBF3DC", backgroundImage: cardSurface(AMBER, 0.4), border: "1px solid #E7D08A", ...accentEdge(AMBER, 3), boxShadow: CARD_3D_SOFT, borderRadius: 12, padding: "11px 14px", marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", ...notePanel(AMBER, "#E7D08A", "#FBF3DC"), borderRadius: 12, padding: "11px 14px", marginBottom: 12 }}>
               <div style={{ flex: "1 1 auto", minWidth: 170 }}>
                 <div style={{ fontSize: 14, fontWeight: 800, color: AMBER }}>New month {"—"} add {dpMonthLabel(dpNowYm())} daypart labor</div>
                 <div style={{ fontSize: 11.5, color: GRAY, marginTop: 2 }}>Latest on file is {dpMonthLabel(latestId)}. Pull the CFA Signal Labor Productivity table and drop it in.</div>
@@ -837,7 +876,7 @@ function DaypartLabor({ tierCfg, onNonOpsSaved, onOpsSaved, onMonthsSaved }) {
               </div>
 
               {lbFailed && (
-                <div style={{ backgroundColor: "#FFFBEB", backgroundImage: cardSurface("#B45309", 0.4), border: `1px solid #F59E0B`, ...accentEdge("#B45309", 3), boxShadow: CARD_3D_SOFT, color: "#92400E", borderRadius: 9, padding: "8px 11px", fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+                <div style={{ ...notePanel("#B45309", "#F59E0B", "#FFFBEB"), color: "#92400E", borderRadius: 9, padding: "8px 11px", fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
                   This did not load, so importing is off. Refresh the page.
                 </div>
               )}
@@ -929,7 +968,7 @@ function DaypartLabor({ tierCfg, onNonOpsSaved, onOpsSaved, onMonthsSaved }) {
 
           {/* standing-ops settings */}
           {opsEdit && (
-            <div style={{ backgroundColor: BG, backgroundImage: cardSurface(NAVY, 0.4), border: `1px solid ${LINE}`, ...accentEdge(NAVY, 3), boxShadow: CARD_3D_SOFT, borderRadius: 10, padding: 12, marginBottom: 12 }}>
+            <div style={{ ...notePanel(NAVY, LINE, BG), borderRadius: 10, padding: 12, marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: NAVY, marginBottom: 2 }}>Standing operational hours per person, per weekday (Mon–Fri)</div>
               <div style={{ fontSize: 11, color: GRAY, marginBottom: 8 }}>
                 People who work operations but are never scheduled on the board. These hours ARE counted
@@ -964,7 +1003,7 @@ function DaypartLabor({ tierCfg, onNonOpsSaved, onOpsSaved, onMonthsSaved }) {
 
           {/* non-ops settings */}
           {cfgEdit && (
-            <div style={{ backgroundColor: BG, backgroundImage: cardSurface(NAVY, 0.4), border: `1px solid ${LINE}`, ...accentEdge(NAVY, 3), boxShadow: CARD_3D_SOFT, borderRadius: 10, padding: 12, marginBottom: 12 }}>
+            <div style={{ ...notePanel(NAVY, LINE, BG), borderRadius: 10, padding: 12, marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: NAVY, marginBottom: 2 }}>Non-op hours per person, per weekday (Mon–Fri)</div>
               <div style={{ fontSize: 11, color: GRAY, marginBottom: 8 }}>
                 These hours are stripped out before the operational $/hr is worked out. Anyone salaried or off the floor belongs here.
@@ -1033,7 +1072,7 @@ function DaypartLabor({ tierCfg, onNonOpsSaved, onOpsSaved, onMonthsSaved }) {
                 const over = m.clockedProd >= m.top20Prod;
                 const diff = Math.abs(m.clockedProd - m.top20Prod);
                 return (
-                  <div style={{ backgroundColor: BG, backgroundImage: cardSurface(NAVY, 0.4), ...accentEdge(NAVY, 3), boxShadow: CARD_3D_SOFT, borderRadius: 12, padding: "14px 15px", marginBottom: 14 }}>
+                  <div style={{ ...notePanel(NAVY, LINE, BG), borderRadius: 12, padding: "14px 15px", marginBottom: 14 }}>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
                       <span style={{ fontSize: 28, fontWeight: 800, color: NAVY, letterSpacing: "-0.5px" }}>
                         ${m.clockedProd.toFixed(2)}
@@ -1754,7 +1793,7 @@ export default function LaborPlanner() {
               onChange={(e) => setDayField(selected, "target", e.target.value)} />
           </div>
 
-          <div style={{ backgroundColor: BG, backgroundImage: cardSurface(NAVY, 0.4), ...accentEdge(NAVY, 3), boxShadow: CARD_3D_SOFT, borderRadius: 10, padding: "8px 12px", margin: "10px 0", fontSize: 13 }}>
+          <div style={{ ...notePanel(NAVY, LINE, BG), borderRadius: 10, padding: "8px 12px", margin: "10px 0", fontSize: 13 }}>
             <b>Budget: {fmtH(sel.budget.total)} h</b>
             <span style={{ color: GRAY }}> all paid</span>
             {/* The board figure is the one he schedules to. Showing only the
@@ -2020,15 +2059,46 @@ export default function LaborPlanner() {
                 <span style={{ marginLeft: 10 }}>split is each daypart&rsquo;s real shape, not the flat {Math.round(cfg.bohPct * 100)}%</span>
               </div>
 
-              {dpDay.worst && (
+              {dpDay.worst && (() => {
+                /* ⛔⛔ THE NUMBER IS A VARIANCE AND THE WORDS CALLED IT THE
+                   DAY'S HOURS. Matt, Aug 21 2026, off his own screen.
+
+                   It read: "These are the day's 17.24 h spread across the
+                   dayparts ... they add up to the day total above" — on a
+                   Thursday whose calendar cell three inches up says 393.00h.
+                   `dayVar` is boardSched − budget, so 17.24 is how far the day
+                   sits FROM budget, and this block's own comment already says
+                   so: "the parts still sum to the day total exactly, because
+                   they are shares of it" — shares of the VARIANCE.
+
+                   ⚠️⚠️ A READER HAS NO WAY TO TELL, WHICH IS WHAT MAKES IT
+                   EXPENSIVE. 17.24 is a plausible number of hours, and "the day
+                   total above" is a real thing on the same screen holding a
+                   different number. Nothing errors and nothing looks broken.
+                   Same shape as the HR badge already written up: the number
+                   came from one thing and the wording came from another.
+
+                   ⚠️ AND `Math.abs` DROPPED THE SIGN, in a file whose own
+                   comment thirty lines up states the one convention for the
+                   whole planner — over is + and RED, under is − and GREEN. The
+                   rows above honour it. This sentence printed identical words
+                   for a day 17 hours over budget and a day 17 hours under it,
+                   which are opposite instructions to the person reading it. */
+                const varOver = dpDay.dayVar > 0.05;
+                const varUnder = dpDay.dayVar < -0.05;
+                return (
                 <div style={{ fontSize: 12, color: INK, background: BG, borderRadius: 8, padding: "8px 10px", marginTop: 8, lineHeight: 1.5 }}>
-                  These are the day&rsquo;s <b>{fmtH(Math.abs(dpDay.dayVar))} h</b> spread across the dayparts by
-                  where the hours actually sit — they add up to the day total above.
+                  These are the <b>{fmtH(Math.abs(dpDay.dayVar))} h</b> this day sits{" "}
+                  <b style={{ color: varOver ? RED : varUnder ? GREEN : GRAY }}>
+                    {varOver ? "over" : varUnder ? "under" : "away from"}
+                  </b>{" "}budget, spread across the dayparts by where the hours actually sit.
+                  They add up to the day&rsquo;s variance above, not to the hours it is scheduled.
                   {" "}<b>{dpDay.worst.dp}</b> is the softest at <b>${dpDay.worst.rate.toFixed(0)}/hr</b> against
                   a ${Number(sel.target).toFixed(0)} target, so lean a cut there first — but check the Sales Curve
                   before stripping a morning: prep and breading for lunch clock inside breakfast.
                 </div>
-              )}
+                );
+              })()}
               <div style={{ fontSize: 10.5, color: GRAY, marginTop: 6 }}>
                 Day and board totals are live. The split inside the day is a typical {DP_DOW[fromIso(selected).getDay() - 1]} from {dpDay.label} — Signal only publishes a month once it closes.
               </div>
@@ -2138,7 +2208,7 @@ export default function LaborPlanner() {
             </div>
 
             {/* Preview — what this tier implies at real volumes */}
-            <div style={{ backgroundColor: BG, backgroundImage: cardSurface(NAVY, 0.4), ...accentEdge(NAVY, 3), boxShadow: CARD_3D_SOFT, borderRadius: 10, padding: "8px 12px", margin: "6px 0 14px", fontSize: 12.5, color: GRAY }}>
+            <div style={{ ...notePanel(NAVY, LINE, BG), borderRadius: 10, padding: "8px 12px", margin: "6px 0 14px", fontSize: 12.5, color: GRAY }}>
               <b style={{ color: INK }}>At this tier:</b>{" "}
               {[28000, 30000, 34000].map((v) => (
                 <span key={v} style={{ marginRight: 10 }}>

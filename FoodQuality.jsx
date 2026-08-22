@@ -1159,7 +1159,7 @@ function ManageItems({ sections, config, onClose, onSave }) {
       }
     >
 
-      <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderLeft: `3px solid ${current ? OK : MID}`, borderTop: `3px solid ${current ? OK : MID}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
+      <div style={{ background: "#fff", boxShadow: CARD_3D, border: `1px solid ${LINE}`, borderLeft: `3px solid ${current ? OK : MID}`, borderTop: `3px solid ${current ? OK : MID}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
         {/* ⚠️ SAYS PLAINLY THAT THIS IS NOT THE WEEKLY SWEEP (Matt, Aug 2 2026).
             "Source list" plus a QIV reference read as the sweep itself, and he
             answered the Input Register's nag with "QIV was done on Thursday" —

@@ -5,6 +5,7 @@ import { eosPeriod } from "./eosPeriod.js";
 import { seatById } from "./orgSeats.js"; // display names follow the seat table, never a hardcoded person
 import { storeCfg, programLabel, cashierNames, STORE } from "./storeConfig.js"; // the mileage rate and the programme name, both read at use time so a saved value takes effect
 import { loadHRTeam } from "./hrTeam.js"; // the REAL roster, for the $5 shortage question only — see CASH_DOC_QUEUE_KEY
+import { DENOMS, countedTotal, uncountedSafe } from "./cashCount.js"; // ⭐ the money rules live in a leaf so checks/ can EXECUTE them; a .jsx cannot be imported by any Node test
 
 /* The person these strings name is the CASH-AUDIT SEAT HOLDER, resolved from
    the same seat file the worker's routing consults — so when the seat changes
@@ -59,18 +60,6 @@ const RED = "#DD0031";
 const MUTED = "#6B7480";
 const TEXT = "#232A31";
 
-const DENOMS = [
-  { key: "d100", label: "$100" },
-  { key: "d50", label: "$50" },
-  { key: "d20", label: "$20" },
-  { key: "d10", label: "$10" },
-  { key: "d5", label: "$5" },
-  { key: "d1", label: "$1" },
-  { key: "q", label: "Quarters $" },
-  { key: "dime", label: "Dimes $" },
-  { key: "n", label: "Nickels $" },
-  { key: "p", label: "Pennies $" },
-];
 const SHIFTS = ["AM", "PM"];
 const SHIFT_ORDER = { AM: 0, PM: 1 };
 /* ★ FROM storeConfig.js (step 2, Aug 11 2026). Same 0.70, typed once.
@@ -347,11 +336,6 @@ function emptyOrder() {
   const o = { id: uid(), date: todayISO(), requestedBy: "", notes: "" };
   ORDER_ITEMS.forEach((d) => (o[d.key] = ""));
   return o;
-}
-
-function countedTotal(entry) {
-  return DENOMS.reduce((sum, d) => sum + (Number(entry[d.key]) || 0), 0)
-    + (Number(entry.tills) || 0) + (Number(entry.loose) || 0);
 }
 
 function orderTotal(entry) {
@@ -777,6 +761,36 @@ export default function CashAudit({ user: userProp, tier = 1 }) {
       if (carry != null) entry.expected = carry.toFixed(2);
     }
     const exists = auditEntries.some((x) => x.id === entry.id);
+
+    /* ⛔⛔ A BLANK DENOMINATION GRID IS NOT A COUNT OF ZERO, AND SAVING ONE
+       FILES A SHORTAGE NOBODY MEASURED.
+
+       Matt, Aug 21 2026, off his own ledger: "we need a guard to prevent this
+       from happening." Fri Aug 21 PM read every denomination $0.00, Tills
+       $1000.00, Expected $3290.00, Over / Short −$2290.00. The safe was never
+       counted. `emptyAudit` ships tills prefilled at "1000" and every
+       denomination blank, so opening the form and pressing Save is enough.
+
+       ⚠️⚠️ AND IT DOES NOT STOP AT THE LEDGER. That row lands in the month's
+       net over/short, in the flagged list, and on the EOS scorecard as a
+       variance the store then has to explain. The money rules in CLAUDE.md
+       already decide this one: a write path unsure of the shape it is
+       producing must FAIL LOUDLY rather than save. A visible error gets
+       reported; a silently wrong figure does not.
+
+       ⇒ The rule is in `cashCount.js` so a test can run it, and it reads
+       BLANK rather than ZERO — a safe counted and found empty is ten typed
+       zeroes, which is a real reading and still saves. Absent and zero are
+       different facts, which is the rule this repo keeps relearning.
+
+       ⚠️ NEW ENTRIES ONLY. Rows written before the grid existed carry no
+       denomination keys at all, so they read as blank forever; refusing to let
+       somebody edit one would be worse than what this prevents (rule 1). */
+    const uncounted = uncountedSafe(entry, { isNew: !exists });
+    if (uncounted != null) {
+      flash(`Count the safe first — every denomination is blank, so this would file ${money(uncounted)}.`);
+      return;
+    }
     const next = exists ? auditEntries.map((x) => (x.id === entry.id ? entry : x)) : [...auditEntries, entry];
     next.sort((a, b) => (sortKey(a) > sortKey(b) ? 1 : -1));
     saveAudit(next);

@@ -27,6 +27,34 @@
    both copies looked plausible on their own.
    ============================================================================ */
 
+/* ★★ THE FOUR DAYPARTS. THE ONE LIST, AND IT WAS THREE.
+   Every daily scorecard record is an object keyed by these four strings, so
+   this is the fact that decides whether a reader sees the data or sees
+   nothing. It was written out in `ShiftLeaderScorecard.jsx` (as objects),
+   `aiSummary.js` and `inputRegistry.js` (as bare key arrays) — three copies of
+   the same four words, which is rule 8 broken twice over on the most
+   load-bearing string in the tile.
+
+   ⚠️⚠️ AND THERE IS A NEAR-MISS SET IN THE SAME FILE THAT LOOKS EXACTLY LIKE
+   THIS ONE. `SL_SHIFT_KEYS` in the Scorecard is `breakfast · lunch · mid ·
+   night` — those are the DAILY SETUP BOARD's column names, used only to
+   prefill leader names off the board. `DP_TO_SHIFT` maps between the two.
+   A reader that aggregates a stored record under "mid" and "night" finds
+   nothing, reports zero, and looks like a store that stopped entering half its
+   day. Reach for this list, never that one, unless you are reading the board.
+
+   `window` is display only; nothing computes from it. */
+export const SL_DAYPARTS = [
+  { key: "breakfast", label: "Breakfast", window: "6-10:30" },
+  { key: "lunch", label: "Lunch", window: "10:30-2" },
+  { key: "afternoon", label: "Afternoon", window: "2-5" },
+  { key: "dinner", label: "Dinner", window: "5-10" },
+];
+
+/* The same four, as bare keys — what a caller that never renders them wants.
+   Derived, so the two can never disagree. */
+export const SL_DAYPART_KEYS = SL_DAYPARTS.map((d) => d.key);
+
 /* The lead slots on each daypart. `owner` is the tag matched against a metric's
    `owner`; `field` is the id stored on the daypart entry. Two slots share the
    "boh" tag deliberately — BOH runs a drive-thru side and a front counter side,
@@ -74,6 +102,43 @@ export function slOwnerTagsFor(entry, personId) {
 export function slCreditedFor(entry, personId, metric) {
   if (!metric || !metric.owner) return false;
   return slOwnerTagsFor(entry, personId).has(metric.owner);
+}
+
+/* ═══ READING A STORED VALUE ═══════════════════════════════════════════════
+   Every SOS number is typed as "3:44" and stored as typed, so anything that
+   averages or compares one has to turn it into seconds first.
+
+   ⚠️ THIS WAS TWO COPIES TOO — `parseMSS` in ShiftLeaderScorecard.jsx and
+   `slParseMSS` in aiSummary.js, byte-for-byte the same logic under two names.
+   They had not drifted yet, which is the only reason converging them is a
+   no-op rather than a decision about whose answer wins. Verified identical
+   before the move.
+
+   ⚠️ A BARE NUMBER IS READ AS SECONDS, not as minutes. "224" is 3:44, not
+   3 hours 44. That is the existing behaviour at both call sites and it is kept
+   deliberately: the entry boxes accept a pasted raw figure from the SOS report,
+   which is already in seconds.
+   ⚠️ RETURNS null, NEVER 0, for a blank. Zero is a real and excellent SOS
+   time; averaging blanks as zero would report a store getting faster every day
+   nobody typed anything. Callers must skip null rather than default it. */
+export function slParseMSS(raw) {
+  if (raw === null || raw === undefined) return null;
+  const s = String(raw).trim();
+  if (s === "") return null;
+  if (s.includes(":")) {
+    const parts = s.split(":");
+    const m = Number(parts[0]), sec = Number(parts[1]);
+    if (Number.isNaN(m) || Number.isNaN(sec)) return null;
+    return m * 60 + sec;
+  }
+  const n = Number(s);
+  return Number.isNaN(n) ? null : n;
+}
+
+export function slFmtMSS(sec) {
+  if (sec === null || sec === undefined) return "—";
+  const s = Math.round(sec);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 /* ═══ GRADING THRESHOLDS ═══════════════════════════════════════════════════

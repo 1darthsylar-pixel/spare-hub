@@ -294,22 +294,47 @@ function TemplateHandoff() {
        to know which weeks exist, so writing it first and then failing halfway
        leaves a course showing eight weeks with three of them empty. This way a
        failure part-way leaves the old structure standing. */
+    /* ⚠️⚠️ `partial` IS THE HALF THAT USED TO LIE. The week CONTENT was checked
+       and `failed` aborts honestly, but the instructor notes, the prep sections
+       and the survey were written with their answer thrown away — so any of
+       them could fail and the screen still finished with "Loaded 8 weeks, 42
+       activities, 3 prep sections. Refresh to see them." A success message
+       naming the exact things that did not save is worse than no message,
+       because the store stops looking.
+
+       ⚠️ THEY DO NOT ABORT, AND THAT IS THE DIFFERENCE FROM `failed`. Content
+       failing means nothing landed and the week list is left alone, so "nothing
+       changed" is true. These three land AFTER content, so by then the course
+       really is partly restored — refusing at that point would be a second lie
+       in the other direction. Say what is missing and tell them to press Load
+       again. */
     const failed = [];
+    const partial = [];
     for (const k of keys) {
       if (b.content[k] && (await kvSet(contentKey(k), b.content[k])) === false) failed.push(k);
-      if (b.inotes && b.inotes[k]) await kvSet(inotesKey(k), b.inotes[k]);
+      if (b.inotes && b.inotes[k] && (await kvSet(inotesKey(k), b.inotes[k])) === false) {
+        partial.push(`week ${k} instructor notes`);
+      }
     }
     if (failed.length) {
       setBusy(false);
       setErr(`${failed.length} week${failed.length === 1 ? "" : "s"} did not save, so the week list was left alone. Nothing changed. Try again.`);
       return;
     }
-    if (Array.isArray(b.prepwork) && b.prepwork.length) await kvSet(K.prepwork, b.prepwork);
-    if (b.survey) await kvSet(K.survey, b.survey);
+    if (Array.isArray(b.prepwork) && b.prepwork.length
+      && (await kvSet(K.prepwork, b.prepwork)) === false) partial.push("the prep sections");
+    if (b.survey && (await kvSet(K.survey, b.survey)) === false) partial.push("the survey");
     const ok = await kvSet(K.weeks, b.weeks);
     setBusy(false);
     if (ok === false) { setErr("The weeks did not save. The class content did. Press Load again."); return; }
+    /* ⚠️ REPORTED BEFORE THE SUCCESS LINE, not appended to it. The summary
+       counts what was in the BUNDLE, not what landed, so printing both would
+       put "3 prep sections" next to "the prep sections did not save". */
     const s = bundleSummary(b);
+    if (partial.length) {
+      setErr(`Loaded ${s.weeks} weeks, but ${partial.join(", ")} did not save. Press Load again to finish.`);
+      return;
+    }
     setNote(`Loaded ${s.weeks} weeks, ${s.items} activities, ${s.prep} prep sections. Refresh to see them.`);
     setPaste("");
   };

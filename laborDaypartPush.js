@@ -7,7 +7,9 @@
    for each daypart?", then "kitchen director gets the back number", "does the
    FOH director get it too", and "and the boh shift leads too?".
 
-   ★ LEAF. Imports nothing. Given a day's board and today's numbers it returns a
+   ★ NEAR-LEAF. Imports boardHistory.js only, for the one shared rule below;
+   that file imports nameMatch.js and nameMatch imports nothing, so the graph
+   terminates one step down. Given a day's board and today's numbers it returns a
    list of {seat, name, text} — it does not know what Slack is and cannot send
    anything. That is the point: who-gets-what is the part worth testing, and it
    is testable here without a single real DM going out.
@@ -25,6 +27,9 @@
    figure they cannot act on, and nobody gets somebody else's.
    ============================================================================ */
 
+import { personInCell as boardPersonInCell } from "./boardHistory.js";
+
+
 /* The six seats, and which slice of the day each one is sent.
    ⚠️ MATCHED ON THE ROLE STRING THE BOARD ACTUALLY CARRIES, which includes
    hours: "LEADER DT (5:15AM-11PM)". Anchored prefixes, never equality. */
@@ -36,16 +41,36 @@ export const SEATS = [
   { seat: "Kitchen Manager", side: "boh", test: /Kitchen Manager/i,     part: "back" },
 ];
 
-/* ⚠️ THE SAME NAME-OUT-OF-A-CELL RULE THE BOARD USES. A cell can hold
-   "Monica", "Monica @11:15", "✔️" (the leader covers it) or "". A bare check is
-   NOT a person and must never be DM'd — it is the absence of an assignment. */
+/* ⚠️⚠️ THIS SAID "THE SAME NAME-OUT-OF-A-CELL RULE THE BOARD USES" AND WAS A
+   SECOND, LOOSER COPY OF IT. Measured Aug 20 2026: six of thirteen real cells
+   answered differently, and every difference was this copy being too generous.
+
+     cell              the board          this copy
+     "6am"             ""                 "6am"          ← a time, DM'd
+     "Split Duties"    ""                 "Split Duties" ← a marker, DM'd
+     "x"               ""                 "x"
+
+   The board's rule carries a dated fix this one never got: a cell STARTING
+   WITH A DIGIT is a time or a count, never a person. Its comment records that
+   "6am" once became a team member called "am", and that it was found by a test
+   rather than by reading — which is exactly what a claim of sameness kept true
+   by memory costs.
+
+   ⇒ IT IS THE BOARD'S RULE NOW, IMPORTED. A comment promising sameness is not
+   sameness; an import is.
+
+   ⚠️ THE COMMA SPLIT IS KEPT, DELIBERATELY, AND IT IS THE ONE THING THIS COPY
+   DID BETTER. A seat cell reading "Ana, Ben" is two people sharing one
+   leadership seat; the board's rule answers "" for it, which would DM neither,
+   while taking the first part reaches one of them. Fewer people told is the
+   worse direction for a DM, so the split runs FIRST and the board's rule then
+   grades what comes out of it — "6am, Ben" still answers "".
+
+   ⚠️ THE HEADER'S "imports nothing" IS NOW "imports boardHistory". That file
+   imports only nameMatch.js, which imports nothing, so the graph still
+   terminates one step down and this file is still testable on its own. */
 export function personInCell(cell) {
-  const raw = String(cell == null ? "" : cell).trim();
-  if (!raw) return "";
-  const noCheck = raw.replace(/[✔✅️]/g, "").trim();
-  if (!noCheck) return "";
-  const name = noCheck.split(/[@(,]/)[0].trim();
-  return /[A-Za-z]/.test(name) ? name : "";
+  return boardPersonInCell(String(cell == null ? "" : cell).split(",")[0]);
 }
 
 /* Walk a day's board for the first station whose role matches, and read that

@@ -141,10 +141,32 @@ export function ipoQuarter(now, plans = {}) {
   let content = plans[authoredKey];
   let carried = false;
 
+  /* ⛔⛔ WHICH QUARTER IT CARRIED FROM IS RETURNED NOW, AND IT IS NOT ALWAYS THE
+     ONE BEFORE. Matt, Aug 21 2026: "ipo action items for q3 disappeared and are
+     in q4."
+
+     🐛 `latestAuthored` prefers a plan at or before this quarter, and when there
+     is none it falls back to the latest authored plan of any date — which can be
+     a LATER quarter. Measured: the only plan this store has ever authored is
+     `2026-Q4`, pasted Aug 14. So standing in Q3 today, the tile carries Q4's
+     checklist BACKWARDS into Q3 with the numbers blanked, and the banner told
+     him it was "the same category checklist as last quarter."
+
+     ⇒ That sentence is what made it read as data moving. Nothing moved: there
+     has never been a `2026-Q3` plan in this key. The screen simply could not say
+     where its own content came from, so it guessed, and it guessed wrong in the
+     one direction that looks like loss.
+
+     ⚠️ THE FALLBACK ITSELF IS NOT CHANGED. Showing a later quarter's checklist
+     with the money stripped is better than an empty screen, and it is what makes
+     a plan authored ahead of time visible while you are still in the quarter
+     before it. What was wrong was only that the screen could not NAME it. */
+  let carriedFrom = null;
   if (!content) {
     const srcKey = latestAuthored(year, q, plans);
     content = srcKey ? blankNumbers(plans[srcKey]) : { fin: null, weeks: [] };
     carried = !!srcKey;
+    carriedFrom = srcKey || null;
   }
 
   const weeks = shells.map((shell, i) => {
@@ -156,5 +178,5 @@ export function ipoQuarter(now, plans = {}) {
     };
   });
 
-  return { year, q, label, key, weeks, fin: content.fin || null, carried };
+  return { year, q, label, key, weeks, fin: content.fin || null, carried, carriedFrom };
 }

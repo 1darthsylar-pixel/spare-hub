@@ -231,6 +231,59 @@ export function matchPayToRoster(rows, team) {
   return { matched, unmatched };
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   ★★ ONE PERSON'S RATE, TYPED.
+
+   Matt, Aug 20 2026: "make the rates editable where they are shown."
+
+   ⚠️⚠️ THIS IS THE AFFORDANCE THE MONEY RULE ASKS FOR, NOT AN EXCEPTION TO IT.
+   The rule is "never do surgical edits to stored data — build the affordance
+   that lets the owner fix it, or fix the code that produced it". Until now a
+   wrong rate could only be corrected by re-pasting the whole salary export,
+   which is not a fix a person can make for one starter who just got a raise.
+
+   ⚠️ IT KEEPS THE REST OF THE RECORD. `basis`, `monthly` and `effective` came
+   from the payroll export and are still true; wiping them would lose the fact
+   that somebody is salaried and quietly change what every other screen says
+   about them.
+
+   ⚠️ AN HOURLY RATE BEATS A SALARY ON PURPOSE — `hourlyFor` prefers `rate` —
+   so typing one for a salaried person turns an estimate into a measured
+   figure. That is the right way round and the screen says so.
+
+   ⚠️ RETURNS null RATHER THAN SAVING SOMETHING UNREADABLE (money rule 2). A
+   blank box is the one exception and means "no rate", which is a real answer
+   and is NOT zero: `hourlyFor` treats null as unknown and the totals leave the
+   person out and count them, rather than pricing their hours at nothing. */
+export function setRate(stored, id, raw, stamp) {
+  const base = readPay(stored).people;
+  const key = String(id == null ? "" : id);
+  if (!key) return null;
+  const txt = String(raw == null ? "" : raw).replace(/[$,\s]/g, "").trim();
+  let rate = null;
+  if (txt !== "") {
+    const n = Number(txt);
+    /* ⛔ ZERO IS REFUSED, NOT STORED. Nobody is paid nothing, so a typed 0 is a
+       slip, and storing it would price their hours at zero in every total
+       silently. Clearing the box is how you say "no rate". */
+    if (!Number.isFinite(n) || n <= 0) return null;
+    rate = n;
+  }
+  const prev = base[key] || {};
+  return {
+    v: 1,
+    people: {
+      ...base,
+      [key]: {
+        ...prev,
+        rate,
+        updatedAt: (stamp && stamp.at) || "",
+        updatedBy: (stamp && stamp.by) || "",
+      },
+    },
+  };
+}
+
 /* Merge into the stored map without touching anybody the export did not cover. */
 export function mergePay(stored, matched, stamp) {
   const base = readPay(stored).people;

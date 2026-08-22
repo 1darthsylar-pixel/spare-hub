@@ -70,6 +70,22 @@ const BOH_DATA = {
 
 const SHIFT_ORDER = ["AM", "MID", "PM"];
 
+/* ⭐ A COLOUR PER DAYPART, AND IT IS THE DAYPART'S RATHER THAN THE DAY'S.
+   Matt, Aug 20 2026: "the AM, MID lines etc.. are just too blah. Some color
+   would help break it up."
+
+   ⚠️ THE DAY ALREADY OWNS THIS PAGE — the header gradient and the panel tint are
+   both its colour — so painting the bands in it too would give three identical
+   bars and break nothing up at all. A leader learns amber/teal/violet once and
+   then reads the page without reading the words.
+   ⚠️ ALL THREE HEXES ARE LIFTED FROM THE DAY PALETTE ABOVE (Friday, Wednesday,
+   Thursday) rather than invented here, so the screen keeps one set of colours. */
+const DAYPART_TINT = {
+  AM:  { deep: "#8A4F0A", tint: "#F7EEE0" },   // sunrise
+  MID: { deep: "#095756", tint: "#E2F0F0" },   // midday
+  PM:  { deep: "#4E3878", tint: "#EDE7F6" },   // evening
+};
+
 /* ---------------------------------------------------------
    HELPERS
 --------------------------------------------------------- */
@@ -520,7 +536,27 @@ export default function DailyCleaning({ tier = 1 }) {
         .wcl-colhead-field { width: 76px; text-align: center; }
         .wcl-colhead-field + .wcl-colhead-field { margin-left: 8px; }
 
-        .wcl-shift-label { padding: 12px 18px 4px; font-size: 11px; font-weight: 800; letter-spacing: .07em; }
+        /* ⭐ THE DAYPART IS A BAND NOW, NOT A WORD. Matt, Aug 20 2026: "the AM,
+           MID lines etc.. are just too blah. Some color would help break it up."
+           They were three characters of tinted text over a white page, so a list
+           of thirty tasks read as one undifferentiated column.
+
+           ⚠️ THE COLOUR IS THE DAYPART'S, NOT THE DAY'S, AND THAT IS THE POINT.
+           The day already owns this page — the header gradient and the panel
+           tint are both its colour — so painting the bands in it too would give
+           three identical bars and change nothing. A leader learns amber/teal/
+           violet once and then reads the page without reading the words.
+           ⚠️ THE THREE HEXES ARE ALREADY IN THIS FILE'S DAY PALETTE (Friday,
+           Wednesday, Thursday) rather than three new ones invented here.
+           ★ AND THE COUNT MAKES THE BAND INFORMATION RATHER THAN DECORATION —
+           "3/4 signed off" for that daypart alone, which is the number a leader
+           walking the floor is actually after. */
+        .wcl-shift-label { display: flex; align-items: center; gap: 8px; margin: 14px 0 0;
+          padding: 7px 18px 7px 0; font-size: 11px; font-weight: 900; letter-spacing: .12em;
+          border-radius: 0 8px 8px 0; }
+        .wcl-shift-bar { width: 5px; align-self: stretch; flex: 0 0 auto; border-radius: 0 3px 3px 0; }
+        .wcl-shift-count { margin-left: auto; font-size: 10.5px; font-weight: 800; letter-spacing: .04em;
+          padding: 2px 8px; border-radius: 999px; }
 
       ` +
       /* ── The task rows ──────────────────────────────────────────────
@@ -551,7 +587,11 @@ export default function DailyCleaning({ tier = 1 }) {
         /* A finished row settles back rather than shouting — the eye should go
            to what is still open. */
         .wcl-row:has(.wcl-check.on) { background: #FCFDFC; }
-        .wcl-check { width: 19px; height: 19px; border-radius: 50%; border: 1.7px solid #CBD3DC; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; transition: background .15s, border-color .15s; }
+        /* ⚠️ SQUARE-ISH, NOT ROUND. Matt, Aug 20 2026: "Let's make the check
+           boxes square ish." A circle reads as a radio button, which is a
+           one-of-many control; these are independent tick boxes and every other
+           checkbox in the Hub is a rounded square. */
+        .wcl-check { width: 19px; height: 19px; border-radius: 6px; border: 1.7px solid #CBD3DC; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; transition: background .15s, border-color .15s; }
         .wcl-check.on { background: #3F8F5F; border-color: #3F8F5F; }
         .wcl-name { flex: 1; font-size: 13.5px; font-weight: 600; transition: color .15s; min-width: 0; }
         .wcl-name.done { color: #9AA4B0; }
@@ -728,7 +768,22 @@ export default function DailyCleaning({ tier = 1 }) {
                 if (rows.length === 0 && addingShift !== shift) {
                   return (
                     <div key={shift}>
-                      <div className="wcl-shift-label" style={{ color: day.deep }}>{shift}</div>
+                      {(() => {
+                        const inShift = flatTasks.filter((x) => x.shift === shift);
+                        const signed = inShift.filter((x) => !!sigOf(x.key).cleaned?.trim()).length;
+                        const c = DAYPART_TINT[shift] || DAYPART_TINT.AM;
+                        return (
+                          <div className="wcl-shift-label" style={{ color: c.deep, background: c.tint }}>
+                            <span className="wcl-shift-bar" style={{ background: c.deep }} />
+                            {shift}
+                            <span className="wcl-shift-count"
+                              style={{ color: signed === inShift.length ? "#fff" : c.deep,
+                                       background: signed === inShift.length ? c.deep : "rgba(255,255,255,0.75)" }}>
+                              {signed}/{inShift.length}
+                            </span>
+                          </div>
+                        );
+                      })()}
                       {renderAdd(shift)}
                     </div>
                   );

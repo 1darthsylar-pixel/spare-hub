@@ -185,6 +185,22 @@ export default function IPOActionItems() {
      A comment asserting the safe behaviour is what stopped anyone looking. */
   const [plans, setPlans] = useState(null);
   const [storedQuarters, setStoredQuarters] = useState([]);
+  /* ⚠️⚠️ THREE OUTCOMES, NOT TWO. Matt, Aug 18 2026: "all of my ipo action items
+     dissapeared." Nothing was deleted — his ticks were still in KV, every one of
+     them — and the authored plan was still on the server. What happened is that
+     a plan the tile could not LOAD and a store that has authored NOTHING both
+     came back as `{}`, and `ipoQuarter({})` returns the empty week skeleton. So
+     a refused or failed read rendered as a checklist with no items on it and
+     said nothing at all.
+
+     ⇒ `planLoad` is "loading" until the fetch answers, then "ok" or "failed".
+     An empty checklist is only ever shown for "ok".
+
+     ⚠️ THIS IS THE SAME CLASS AS THE RETENTION PURGE AND readKVResult: absent
+     and unreachable are different facts, and collapsing them always fails in
+     the frightening direction — the screen reports the store has nothing. */
+  const [planLoad, setPlanLoad] = useState("loading");
+  const [planWhy, setPlanWhy] = useState("");
   /* Bumping this refetches. The editor calls it after a successful save so the
      screen shows what was just stored rather than what was loaded on open. */
   const [reload, setReload] = useState(0);
@@ -195,9 +211,20 @@ export default function IPOActionItems() {
         const r = await fetch("/api/ipo-plan", { headers: { "x-hub-token": hubToken() } });
         const d = await r.json().catch(() => null);
         if (!alive) return;
-        setPlans(d && d.ok ? (d.plans || {}) : {});
-        setStoredQuarters((d && d.ok && d.storedQuarters) || []);
-      } catch { if (alive) { setPlans({}); setStoredQuarters([]); } }
+        if (d && d.ok) {
+          setPlans(d.plans || {});
+          setStoredQuarters(d.storedQuarters || []);
+          setPlanLoad("ok"); setPlanWhy("");
+        } else {
+          /* ⚠️ THE PLANS ARE LEFT ALONE ON A FAILURE, not blanked. If a refetch
+             after a save fails, the screen keeps showing the quarter it already
+             had rather than emptying under somebody who is mid-quarter. */
+          setPlanLoad("failed");
+          setPlanWhy(String((d && d.error) || `the server answered ${r.status}`).slice(0, 120));
+        }
+      } catch (e) {
+        if (alive) { setPlanLoad("failed"); setPlanWhy("the request did not reach the Hub"); }
+      }
     })();
     return () => { alive = false; };
   }, [reload]);
@@ -628,6 +655,15 @@ export default function IPOActionItems() {
         }
       `}</style>
 
+      {planLoad === "failed" && (
+        <div style={{ background:"#FEF2F2", border:"1.5px solid #DC2626", color:"#991B1B", borderRadius:10, padding:"10px 14px", fontSize:13, fontWeight:700, margin:"12px 14px 0" }}>
+          The quarter plan did not load, so this list is not your real one.
+          <b> Nothing has been deleted</b> — your ticked boxes are saved and will
+          come straight back. Usually this means the sign-in expired: sign out
+          and back in, then reopen this tile.
+          {planWhy ? <div style={{ fontWeight: 600, marginTop: 4, fontSize: 12 }}>The Hub said: {planWhy}</div> : null}
+        </div>
+      )}
       {loadFailed && (
         <div style={{ background:"#FFFBEB", border:"1.5px solid #F59E0B", color:"#92400E", borderRadius:10, padding:"10px 14px", fontSize:13, fontWeight:700, margin:"12px 14px 0" }}>
           The checklist did not load, so ticking is off — one tick now would save
@@ -693,9 +729,11 @@ export default function IPOActionItems() {
 
           {carried && (
             <div className="carriedNote">
-              <b>{plan.label} plan carried forward.</b> Same category checklist as last quarter, with a
-              fresh clean slate. The dollar figures are hidden until you refresh them from this quarter's
-              FCR report.
+              <b>No {plan.label} plan has been written yet.</b>{" "}
+              {plan.carriedFrom
+                ? <>This is the checklist from <b>{plan.carriedFrom}</b>, shown with a fresh clean slate. Nothing has been moved or lost, and the {plan.carriedFrom} plan is still there under its own quarter.</>
+                : <>Showing a clean checklist.</>}
+              {" "}The dollar figures are hidden until this quarter has its own plan.
             </div>
           )}
 

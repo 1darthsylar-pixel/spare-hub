@@ -38,6 +38,7 @@ import { CARD_3D, accentEdge, ACCENT_NEUTRAL } from "./cardStyle.js";
 import { hubToken, kvSet, kvGetResult } from "./store.js";
 import PasteMonth from "./PasteMonth.jsx";
 import { parseScorecardPaste } from "./pasteImports.js";
+import { isRdrText, rdrToScorecardPaste } from "./rdrReport.js";
 
 const KV_KEY = "gcfcr-scorecard-fy26-v1";
 
@@ -246,7 +247,16 @@ const qVisible = (qi, activeQ) => qi === activeQ || qi === activeQ - 1;
 const GRID_MIN = LABEL_MIN + GOAL_W + Q_W * 2 + STATUS_W + 8 * 4 + 28;
 
 // ── Rows ────────────────────────────────────────────────────────────
-function Row({ row, activeQ, onField, onQ, onStatus }) {
+/* ⚠️⚠️ `labels` IS FOR THE PHONE ONLY, AND IT IS NOT DECORATION.
+   Matt, Aug 18 2026: "on cpu the scorecard looks great. on iphone its not as
+   user friendly." On a 390px screen this row is ~564px wide, so it scrolled
+   sideways — and the LABEL scrolled off with it, leaving a column of bare
+   numbers with nothing saying which row or which quarter you were editing.
+   ⇒ The restack below puts the cells on a second line, which means the column
+   headers are no longer above them. Each cell carries its own caption instead.
+   Without `labels` those captions would have to be re-derived here, which is a
+   second copy of colLabels (rule 8). */
+function Row({ row, activeQ, labels, onField, onQ, onStatus }) {
   // A row stored without `q` still renders its boxes empty instead of taking
   // the whole section card down.
   const q = Array.isArray(row.q) ? row.q : [];
@@ -259,9 +269,9 @@ function Row({ row, activeQ, onField, onQ, onStatus }) {
 
   return (
     <div style={{ padding: "10px 14px", borderTop: `1px solid ${LINE}` }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div className="sc-rowmain" style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {/* Label + note + delta */}
-        <div style={{ flex: 1, minWidth: LABEL_MIN }}>
+        <div className="sc-labelcol" style={{ flex: 1, minWidth: LABEL_MIN }}>
           <div style={{ fontSize: 13.5, fontWeight: 600, color: "#1F2937" }}>{row.label}</div>
           {row.note && (
             <div
@@ -291,39 +301,71 @@ function Row({ row, activeQ, onField, onQ, onStatus }) {
           )}
         </div>
 
+        {/* ⚠️ `sc-cells` IS `display:contents` ON DESKTOP, so the flex layout
+            below it is byte-identical to before — the wrapper is invisible to
+            the layout engine. Only the phone media query turns it into a real
+            box. That is what lets the restack cost the working iPad view
+            nothing (rule 16). */}
+        <div className="sc-cells">
         {/* Goal + bench (editable) */}
-        <div style={{ width: GOAL_W, flexShrink: 0 }}>
+        <div className="sc-cell" style={{ width: GOAL_W, flexShrink: 0 }}>
+          <div className="sc-cap">Goal / Bench</div>
           <input
             value={row.goal}
             onChange={(e) => onField("goal", e.target.value)}
             placeholder="—"
             style={{ ...cellInput(false), fontWeight: 700, background: "#fff" }}
           />
-          <input
-            value={row.bench}
-            onChange={(e) => onField("bench", e.target.value)}
-            placeholder="bench"
-            style={{
-              fontFamily: MONO,
-              fontSize: 16,
-              textAlign: "center",
-              width: "100%",
-              boxSizing: "border-box",
-              padding: "3px 2px",
-              border: "none",
-              background: "transparent",
-              color: "#AAB4C0",
-              outline: "none",
-              marginTop: 1,
-              minWidth: 0,
-            }}
-          />
+          {/* ⚠️⚠️ THE BENCHMARK WAS #AAB4C0 ON WHITE AND UNREADABLE. Matt,
+              Aug 21 2026, off a photo of this screen: "the benchmark is barely
+              visible."
+
+              Measured rather than eyeballed: #AAB4C0 on #fff is a contrast ratio
+              of about 2.2:1. Readable body text needs 4.5:1. It was not faint on
+              purpose, it was below the floor — so the number the goal is being
+              JUDGED against was the hardest thing in the row to read.
+
+              ⇒ #5B6675 is about 6.4:1. Still visibly lighter and lighter-weight
+              than the goal above it, so the hierarchy is unchanged; it is simply
+              legible now.
+              ⚠️ AND IT SAYS WHICH NUMBER IT IS. Two bare figures stacked in one
+              cell under a shared "Goal / Bench" caption left the reader to work
+              out which was which. The rule line and the tiny label are what make
+              it a pair rather than two numbers that happen to be adjacent. */}
+          <div style={{ borderTop: "1px solid #E8ECF1", marginTop: 3, paddingTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.06em", color: "#8A94A3", flexShrink: 0 }}>BENCH</span>
+            <input
+              value={row.bench}
+              onChange={(e) => onField("bench", e.target.value)}
+              placeholder="—"
+              style={{
+                fontFamily: MONO,
+                fontSize: 15,
+                textAlign: "center",
+                width: "100%",
+                boxSizing: "border-box",
+                padding: "1px 2px",
+                border: "none",
+                background: "transparent",
+                color: "#5B6675",
+                outline: "none",
+                minWidth: 0,
+              }}
+            />
+          </div>
         </div>
 
         {/* Quarter actuals — current + previous render; all four stay stored,
             and picking an earlier quarter chip brings its column back */}
         {QUARTERS.map((qLabel, qi) => qVisible(qi, activeQ) && (
-          <div key={qLabel} style={{ width: Q_W, flexShrink: 0 }}>
+          <div key={qLabel} className="sc-cell" style={{ width: Q_W, flexShrink: 0 }}>
+            {/* ⚠️ THE CAPTION IS THE COLUMN HEADER, MOVED. On a phone the header
+                row is hidden, so without this you are typing into an unlabelled
+                box — and the two boxes are adjacent quarters, which is the one
+                mistake that silently rewrites last quarter. */}
+            <div className="sc-cap" style={{ color: qi === activeQ ? RED : undefined }}>
+              {(labels && labels[qi]) || QUARTERS[qi]}
+            </div>
             <input
               value={q[qi] || ""}
               onChange={(e) => onQ(qi, e.target.value)}
@@ -332,6 +374,7 @@ function Row({ row, activeQ, onField, onQ, onStatus }) {
             />
           </div>
         ))}
+        </div>
 
         <StatusChip status={row.status} onCycle={onStatus} />
       </div>
@@ -392,9 +435,9 @@ function SectionCard({ section, activeQ, onField, onQ, onStatus }) {
           than the viewport, so this lets you swipe across to the later
           quarters + status. On iPad the grid fits, so nothing scrolls. */}
       <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-        <div style={{ minWidth: GRID_MIN }}>
+        <div className="sc-gridmin" style={{ minWidth: GRID_MIN }}>
           {/* Column headers */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px 5px" }}>
+          <div className="sc-colhead" style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px 5px" }}>
             <span style={{ flex: 1, minWidth: LABEL_MIN }} />
             <span style={{ ...colHead, width: GOAL_W, flexShrink: 0 }}>Goal / Bench</span>
             {colLabels(section.colMode).map((qLabel, qi) => qVisible(qi, activeQ) && (
@@ -419,6 +462,7 @@ function SectionCard({ section, activeQ, onField, onQ, onStatus }) {
               key={ri}
               row={row}
               activeQ={activeQ}
+              labels={colLabels(section.colMode)}
               onField={(field, val) => onField(ri, field, val)}
               onQ={(qi, val) => onQ(ri, qi, val)}
               onStatus={() => onStatus(ri)}
@@ -639,6 +683,24 @@ export default function BusinessScorecard() {
      scheduleSave every hand edit uses. */
   const importScorecard = (text) => {
     if (loadFailedRef.current) return { ok: false, message: "The saved scorecard could not be reached — importing is off. Close and reopen the tile to retry." };
+    /* ★★ DROP THE RDR PDF STRAIGHT IN. Matt, Aug 18 2026: "i need to be able to
+       upload the resteraunt data report straight into the hub and get the same
+       result." ImportFileZone already turns a dropped PDF into text; this
+       recognises that text and converts it to the block below.
+       ⚠️ IT CONVERTS, IT DOES NOT WRITE. Everything after this line is the
+       hand-paste path, unchanged — one parser, one set of rules about which
+       labels exist, one answer for an unknown one (rule 8).
+       ⚠️ ROUTED ON THE REPORT'S OWN TITLE, not on "did the scorecard parse
+       fail". Trying the scorecard parser first and falling back would turn
+       every typo in a hand-paste into a confusing RDR error. */
+    let note = "";
+    if (isRdrText(text)) {
+      const conv = rdrToScorecardPaste(text);
+      if (!conv.ok) return { ok: false, message: conv.error };
+      text = conv.text;
+      note = ` Read from the ${conv.period} Restaurant Data Report.`
+        + (conv.skipped.length ? ` Still needs typing by hand: ${conv.skipped.join("; ")}.` : "");
+    }
     const p = parseScorecardPaste(text);
     if (p.error) return { ok: false, message: p.error };
     const qi = Number(p.quarter.slice(1)) - 1;
@@ -658,7 +720,7 @@ export default function BusinessScorecard() {
     });
     if (!hit) return { ok: false, message: `No row labels matched this scorecard.${unknown.length ? ` Unmatched: ${unknown.join(", ")}.` : ""}` };
     commit(next);
-    return { ok: true, message: `Filled ${p.quarter} on ${hit} row${hit === 1 ? "" : "s"}.${unknown.length ? ` Ignored unknown rows: ${unknown.join(", ")}.` : ""}` };
+    return { ok: true, message: `Filled ${p.quarter} on ${hit} row${hit === 1 ? "" : "s"}.${note}${unknown.length ? ` Ignored unknown rows: ${unknown.join(", ")}.` : ""}` };
   };
 
   const cycleStatus = (si, ri) => {
@@ -750,6 +812,45 @@ export default function BusinessScorecard() {
           .sc-cats{flex-direction:row;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;}
           .sc-cats > button{flex:0 0 auto;width:210px;}
           .sc-foot{display:none;}
+        }
+        /* ══ PHONE: RESTACK THE ROW INSTEAD OF SCROLLING IT ══════════════════
+           Matt, Aug 18 2026: "on cpu the scorecard looks great. on iphone its
+           not as user friendly."
+
+           The row is label(150) + goal(104) + 2 quarters(192) + status(58) plus
+           gaps = ~564px against an iPhone's 390. So it scrolled sideways, and
+           the ROW LABEL scrolled away with it — leaving a column of numbers
+           with nothing saying which row or which quarter you were in.
+
+           ⚠️ NOTHING ABOVE 700px CHANGES. sc-cells is display:contents by
+           default, so the wrapper is invisible to the flex layout and the iPad
+           view Matt likes is byte-identical. Only this block makes it a box.
+
+           ⚠️ 700px, NOT THE 820px ABOVE. That one restacks the CATEGORY rail,
+           which needs to fold much earlier than the data grid does. Sharing a
+           breakpoint would have folded the grid on an iPad that fits it fine. */
+        .sc-cells{display:contents;}
+        .sc-cap{display:none;}
+        @media (max-width:700px){
+          /* No sideways scroll: the grid stops forcing a 564px floor. */
+          .sc-gridmin{min-width:0 !important;}
+          /* The header row's columns no longer line up with anything, and each
+             cell carries its own caption instead. */
+          .sc-colhead{display:none !important;}
+          .sc-rowmain{flex-wrap:wrap;align-items:flex-start;}
+          /* Line 1 is the label and the status chip, so what a row IS and how
+             it is doing are always both on screen. */
+          .sc-labelcol{min-width:0 !important;flex:1 1 auto;}
+          /* Line 2 is the three editable cells, sharing the width evenly. */
+          .sc-cells{display:flex;gap:8px;flex:1 1 100%;margin-top:8px;}
+          .sc-cell{width:auto !important;flex:1 1 0;min-width:0;}
+          .sc-cap{
+            display:block;font-family:'IBM Plex Mono',ui-monospace,monospace;
+            font-size:9.5px;font-weight:700;letter-spacing:0.08em;
+            text-transform:uppercase;color:#AAB4C0;text-align:center;
+            margin-bottom:2px;white-space:nowrap;overflow:hidden;
+            text-overflow:ellipsis;
+          }
         }`}</style>
       {loadFailed && (
         <div style={{ background: "#F5EAD3", borderBottom: "1px solid #E4CE9E", color: "#7A5410", padding: "10px 16px", fontSize: 13, fontWeight: 700 }}>
@@ -769,6 +870,13 @@ export default function BusinessScorecard() {
              stay so the format is recognisable; every figure is round and
              obviously invented. */
           placeholder={"SCORECARD Q3\nOSAT | 80%\nTaste | 80%\nSpeed of Service | 80% | 75%"}
+          /* ★ WHERE THE NUMBERS COME FROM, for a store with nobody to ask. */
+          where={[
+            "AnalyticsHub → Restaurant Data Report, for the month you want.",
+            "Save it as a PDF and drop the file straight in — it fills 24 rows on its own.",
+            "Or type the lines by hand in the shape above. Both work.",
+            "Aha % and QIV % are not read from the PDF and stay hand-typed. The report prints their quarter figure on the same line as its benchmarks, and guessing which is which is not worth a wrong number on the board.",
+          ]}
           onImport={importScorecard} />
       </div>
       <div style={{ background: "linear-gradient(120deg,#1D4266 0%,#0B1826 55%)", color: "#fff", borderBottom: "3px solid #C0392B" }}>
@@ -837,9 +945,17 @@ export default function BusinessScorecard() {
                     textAlign: "left",
                     background: on ? "#fff" : "transparent",
                     border: `1px solid ${on ? "#C9A0A0" : LINE}`,
-                    ...accentEdge(ACCENT_NEUTRAL, 3), borderRadius: 11, boxShadow: CARD_3D,
+                    ...accentEdge(ACCENT_NEUTRAL, 3), borderRadius: 11,
                     padding: "11px 13px",
                     cursor: "pointer",
+                    /* 🐛 `boxShadow: CARD_3D` USED TO SIT THREE LINES ABOVE THIS
+                       ONE, in the same object, and was dead — the later key wins.
+                       ⚠️ THE CONDITIONAL IS THE ONE THAT MEANS SOMETHING: this
+                       card is a toggle, and the shadow is how a selected one
+                       reads as raised. Keeping CARD_3D instead would have made
+                       every card look selected and thrown the cue away, which is
+                       why the duplicate was resolved this way round rather than
+                       toward the shared token. Graded by dupKeys.test.mjs. */
                     boxShadow: on ? "0 2px 8px rgba(19,41,63,.06)" : "none",
                   }}
                 >

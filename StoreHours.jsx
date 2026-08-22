@@ -32,6 +32,7 @@ import {
   setStationCut, cutsOn, earlyStations,
 } from "./storeHours.js";
 import { dowOf } from "./schoolCalendar.js";
+import { parseHolidayPaste, newOnly, lateForAHoliday } from "./holidayPaste.js";
 import { DAY_KEYS } from "./availability.js";
 
 const INK = "#13293F", GRAY = "#6B7480", RED = "#B91C1C";
@@ -82,6 +83,10 @@ export default function StoreHours({ cfg, canEdit, onSave, busy, stations }) {
   const [closed, setClosed] = useState(false);
   const [err, setErr] = useState("");
   const [openCuts, setOpenCuts] = useState("");   // which date's station list is showing
+  /* The ControlPoint paste. `read` holds what the parser made of it, so the
+     screen can show what WOULD change before anything is written. */
+  const [paste, setPaste] = useState("");
+  const [read, setRead] = useState(null);
 
   const rows = useMemo(() => upcoming(C, todayIso(), 24), [C]);
   const hasDefault = C.defaultOpen != null && C.defaultClose != null;
@@ -161,6 +166,112 @@ export default function StoreHours({ cfg, canEdit, onSave, busy, stations }) {
             </div>
           </div>
         </div>
+
+        {/* ═══ PASTE THE WHOLE YEAR FROM CONTROLPOINT ═══════════════════════
+
+            Matt, Aug 21 2026: "i don't want to type them in. i want you to."
+
+            He cannot be typed for. Writing these needs a signed-in session, and
+            hand-writing the store's own database goes around every writer in
+            storeHours.js. So the typing stops being necessary instead: the
+            holidays are already listed in ControlPoint, and a paste is not
+            typing.
+
+            ⚠️ IT SHOWS WHAT WOULD CHANGE BEFORE IT CHANGES IT. These dates
+            decide whether a full crew is rostered for a shut store, so a silent
+            bulk write is the wrong shape however correct the parser is. */}
+        {canEdit ? (
+          <div className="mb-3 rounded-lg border border-slate-200 p-3">
+            <div className="mb-1 text-xs font-medium uppercase tracking-wide" style={{ color: GRAY }}>
+              Paste the holidays from ControlPoint
+            </div>
+            <div className="mb-2 text-xs" style={{ color: GRAY }}>
+              ControlPoint → Digital Ordering → Hours → Holiday Hours. Select the whole
+              list and copy it. Only the <b>Restaurant</b> line is read, because that is
+              the building being open. Curb Side and CFA Delivery are ignored.
+            </div>
+            <textarea
+              value={paste} disabled={busy} rows={4}
+              onChange={(e) => { setPaste(e.target.value); setRead(null); setErr(""); }}
+              placeholder={"Labor Day    09/07/2026\nRestaurant (Dine-In, Carry-out, Catering Pick-up)    10:30 am  to  4:00 pm\nDrive Thru    10:30 am  to  4:00 pm\n…"}
+              className="w-full rounded-lg border border-slate-300 p-2 text-sm"
+              style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12 }}
+            />
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button" disabled={busy || !paste.trim()}
+                onClick={() => {
+                  const r = parseHolidayPaste(paste);
+                  if (r.error) { setErr(r.error); setRead(null); return; }
+                  setErr("");
+                  setRead({ ...r, split: newOnly(r.days, C) });
+                }}
+                className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
+                style={{ background: TILE }}
+              >
+                Read it
+              </button>
+              {read ? (
+                <button
+                  type="button" disabled={busy || (!read.split.add.length && !read.split.change.length)}
+                  onClick={() => {
+                    /* ⚠️⚠️ ONE SAVE, NOT ONE PER DAY. Seven writes means seven
+                       chances to half-apply a year of hours, and the record is
+                       rebuilt whole on every write anyway. */
+                    let next = C;
+                    const bad = [];
+                    for (const d of [...read.split.add, ...read.split.change]) {
+                      /* ⚠️ NO STAMP HERE, matching every other call on this screen. The
+                         stamp is applied once by saveStoreHours in Availability,
+                         which is the one writer for this key. Passing one here
+                         would put seven different times on one save. */
+                      const step = setDate(next, d.iso, { closed: d.closed, open: d.open, close: d.close, note: d.name });
+                      if (!step) { bad.push(d.name || d.iso); continue; }
+                      next = step;
+                    }
+                    if (bad.length) { setErr(`These were refused and nothing was saved: ${bad.join(", ")}`); return; }
+                    onSave(next);
+                    setPaste(""); setRead(null);
+                  }}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
+                  style={{ color: INK }}
+                >
+                  {read.split.add.length + read.split.change.length
+                    ? `Save ${read.split.add.length + read.split.change.length} day${read.split.add.length + read.split.change.length === 1 ? "" : "s"}`
+                    : "Nothing to change"}
+                </button>
+              ) : null}
+            </div>
+
+            {read ? (
+              <div className="mt-2 text-xs" style={{ color: GRAY }}>
+                {/* ⚠️ THE COUNTS COME OFF THE SAME ARRAYS THE LIST DOES. */}
+                <div>
+                  <b style={{ color: INK }}>{read.split.add.length}</b> new,{" "}
+                  <b style={{ color: INK }}>{read.split.change.length}</b> changed,{" "}
+                  {read.split.same.length} already right.
+                </div>
+                {[...read.split.add, ...read.split.change].map((d) => (
+                  <div key={d.iso} style={{ color: INK }}>
+                    {d.iso} · {d.name || "holiday"} ·{" "}
+                    {d.closed ? <b style={{ color: RED }}>Closed</b> : `${fmtMin(d.open)} to ${fmtMin(d.close)}`}
+                    {d.driveThru && !d.driveThru.closed && d.driveThru.close !== d.close
+                      ? <span style={{ color: GRAY }}> · drive thru to {fmtMin(d.driveThru.close)}, set that as a cut below</span>
+                      : null}
+                    {/* ⚠️ THE STORE'S OWN RULE, CHECKED AGAINST THE PAGE. It
+                        flags rather than corrects: see holidayPaste.js. */}
+                    {lateForAHoliday(d)
+                      ? <span style={{ color: RED }}> · closes after 4pm, check this one</span>
+                      : null}
+                  </div>
+                ))}
+                {read.skipped.map((why, i) => (
+                  <div key={i} style={{ color: RED }}>Skipped · {why}</div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* Add one date. */}
         {canEdit ? (

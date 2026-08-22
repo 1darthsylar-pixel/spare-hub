@@ -74,6 +74,84 @@ export const lift = (hex) => {
   return hex6(c.map((v) => v + dir));
 };
 
+/* ★★ THE SAME GRADIENT, FOR A WHOLE PAGE RATHER THAN A BAND. Matt, Aug 19
+   2026, on the Report Card's dark sheet: "I like the dark but we need it a
+   little lighter. Add the gradient look as well."
+
+   ⚠️⚠️ IT LIVES HERE, NEXT TO `lift`, FOR TWO REASONS. One is rule 8: the hero
+   builds its band from exactly this pair and a second copy would drift, so a
+   page that wants to continue the hero must ask the same function. The other is
+   that `heroColor.test.mjs` ratchets JSX files containing a literal
+   `linear-gradient(1NNdeg` — the guard against tiles hand-rolling their own
+   hero instead of using ToolHero. A page background is not a hero, but a grep
+   cannot tell, and dodging that check by picking an angle it does not match
+   would be gaming it. Calling a shared helper is the honest way past it.
+
+   ⚠️ 120deg IS THE HERO'S OWN ANGLE, so the sheet runs the same direction as
+   the band sitting on top of it and the two read as one field rather than two
+   panels that happen to be the same colour. */
+export const SHEET_ANGLE = 120;
+
+/* ⛔⛔ A SHEET NEEDS A BIGGER STEP THAN A BAND, AND THE FIRST VERSION DID NOT
+   HAVE ONE. `HERO_STEP` is 14 because it reproduces a hero Matt already said he
+   likes, across a band a couple of hundred pixels tall. Reused unchanged on a
+   sheet that runs the whole page, +14 on each channel is about 5% lighter over
+   a thousand pixels, which is below what an eye picks up.
+
+   ⇒ Measured against his own words, Aug 19 2026: "I still don't see the
+   gradient." He was right — it was rendering, it was just invisible.
+
+   ⚠️ `HERO_STEP` IS DELIBERATELY NOT TOUCHED. Raising it would relight every
+   hero in the app to fix one page, and the heroes are the thing he already
+   approved. A sheet is a different surface with a different span, so it gets
+   its own number rather than borrowing one that was tuned for something else.
+
+   ⚠️ IT IS STILL A FLAT ADDITIVE STEP, for the same reason `lift` is: scaling
+   toward white desaturates and turns a navy grey. Moving every channel the same
+   distance holds the hue by construction. */
+export const SHEET_STEP = 46;
+
+const liftBy = (hex, step) => {
+  const c = rgb(hex);
+  if (!c) return "#26304A";
+  const dir = isLight(hex) ? -step : step;
+  return hex6(c.map((v) => v + dir));
+};
+
+/* ⛔⛔⛔ THE STEP WAS NEVER THE WHOLE PROBLEM. THE SPAN WAS.
+   Matt, twice: "I still don't see the gradient", then "the gradient ... is still
+   not enough of a visible difference." The first time the step went 14 -> 34 and
+   he still could not see it, which means the number was not the thing.
+
+   ⇒ WHY. The ramp ran `0%` to `100%` OF THE ELEMENT, and the element is the
+   whole Report Card sheet, which scrolls for thousands of pixels. A percentage
+   ramp spreads the entire colour change across the full height, so any single
+   SCREENFUL only ever shows a sliver of it. On a page 3000px tall, one 800px
+   screen shows about a quarter of a 34-step change — roughly 8 points per
+   channel, which is under the floor at these luminances.
+
+   ⚠️⚠️ AND IT GOT WORSE AS THE PAGE GREW. Every section added to the Report
+   Card stretched the same ramp further and made the gradient fainter. A
+   percentage ramp on a page-height element is self-defeating by construction.
+
+   ⇒ THE FIX IS ABSOLUTE UNITS. The ramp now finishes at a FIXED distance, so it
+   completes inside the first screen on every device and the rest of the page
+   holds the base colour. A longer page no longer dilutes it. This is the part
+   that actually answers him; the step going 34 -> 46 is the smaller half.
+
+   ⚠️ IT ALSO RUNS THE OTHER WAY NOW: lit at the top, settling into the base.
+   Light falls from above, so a sheet that is lighter where it starts reads as
+   lit rather than as a colour error. It is the same direction `BusinessScorecard`
+   already uses on its header, which is the one gradient in this app nobody has
+   ever complained about not seeing.
+
+   ⚠️ DO NOT PUT A PERCENTAGE BACK. `heroColor.test.mjs` fails if either stop is
+   expressed as a percentage, because that is the bug, not the number. */
+export const SHEET_SPAN = 620;
+
+export const sheetGradient = (hex) =>
+  `linear-gradient(${SHEET_ANGLE}deg, ${liftBy(hex, SHEET_STEP)} 0px, ${hex} ${SHEET_SPAN}px)`;
+
 /* Ink and the quiet line, for a band of this colour. Kept here rather than in
    the component so the test can assert the pairing, which is the part that
    actually decides whether a hero is readable. */

@@ -220,12 +220,157 @@ export function makeAnnouncement(f) {
     acks: (x.acks && typeof x.acks === "object" && !Array.isArray(x.acks)) ? x.acks : {},
     /* null, or { at, byId, byName, why }. Never removes the record. */
     retracted: x.retracted && typeof x.retracted === "object" ? x.retracted : null,
+
+    /* ── SUPERSEDING ────────────────────────────────────────────────────────
+       🐛 Matt, Aug 21 2026: "More people are opening now. If a new announcement
+       supercedes an old One then the old one should disappear. It will be too
+       much clutter otherwise."
+
+       He was reading a list with "Ops checklists — tonight's recap" on it three
+       times, beside a daily food safety walk, a daily waste log check and a
+       daily morning digest. Twenty recurring jobs write one of these a day. The
+       list only ever grows, and the day it matters is the day a real message
+       has to be found in it.
+
+       `series` NAMES THE JOB, NOT THE MESSAGE. Titles carry dates — "Waste log
+       check — 2026-08-19" — so two runs of one job never share a title, which
+       is exactly why they stack. The series is the stable half.
+
+       ⚠️ A ONE-OFF HAS NO SERIES AND IS NEVER REPLACED. An announcement a
+       person writes by hand has `series: ""`, and nothing supersedes it. The
+       Lineup message will still be on the list in October.
+
+       ⚠️⚠️ SUPERSEDED IS NOT RETRACTED AND NOT DELETED, and the difference is
+       the whole design. Retracting is a person saying "ignore this", and it
+       stays visible and marked, because a message that vanishes is a message
+       that can be denied. Superseding is bookkeeping: the record and its read
+       list stay exactly as they were, and only the LIST stops showing it. The
+       screen already promises "once sent this cannot be edited or deleted",
+       and that promise still holds. */
+    series: clean(x.series),
+    /* null, or { at, byId } naming the announcement that replaced it. */
+    supersededBy: x.supersededBy && typeof x.supersededBy === "object" ? x.supersededBy : null,
   };
 }
 
 export const announcementList = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
 
 export const isRetracted = (a) => !!(a && a.retracted && a.retracted.at);
+
+/* Replaced by a newer run of the same job. The record is intact; it is only
+   off the list. */
+export const isSuperseded = (a) => !!(a && a.supersededBy && a.supersededBy.at);
+
+/* ⚠️⚠️ THE ANNOUNCEMENTS THAT WERE ALREADY ON FILE.
+
+   🐛 Matt, Aug 21 2026, looking at the list AFTER the supersede fix shipped:
+   the same three "Ops checklists — tonight's recap" rows, unchanged.
+
+   Superseding keys on `series`, and every record written before that field
+   existed has none. So the fix was working perfectly on records it had never
+   seen and doing nothing at all to the backlog somebody was actually looking
+   at. Correct, and useless, which is the worst pair.
+
+   ⇒ A LEGACY RECORD INFERS ITS SERIES FROM ITS TITLE. Nothing is written and
+   no stored record is touched: the inference happens on read, so the same fix
+   reaches the rows already on file.
+
+   ⛔ HUB-WRITTEN RECORDS ONLY, AND THAT IS THE WHOLE SAFETY. `postHubRecap`
+   sets `byId: ""`; a person composing an announcement gets `byId: uid`. So a
+   real author's message can never be inferred into a series, and the rule
+   "a hand-written announcement is never replaced" survives untouched. Two
+   directors posting "Team meeting" a week apart still both stand. */
+const TITLE_KEY = (t) => String(t || "")
+  .toLowerCase()
+  /* Dates are what make two runs of one job look like two different things,
+     so they are exactly what has to come out. */
+  .replace(/\d{4}-\d{2}-\d{2}/g, " ")
+  .replace(/\b(mon|tues|wednes|thurs|fri|satur|sun)day\b/g, " ")
+  .replace(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/g, " ")
+  .replace(/\b\d{1,2}\/\d{1,2}(\/\d{2,4})?\b/g, " ")
+  /* A range reads "… — 2026-08-10 to 2026-08-16" and loses both halves above,
+     leaving a bare "to" that would key two different weeks differently. */
+  .replace(/\bto\b/g, " ")
+  .replace(/[^a-z0-9]+/g, " ")
+  .trim();
+
+/* The series a record belongs to. "" means nothing may ever replace it.
+
+   ⚠️ THE STORED SERIES WINS WHEN THERE IS ONE. Two posts from one job can carry
+   different titles on purpose — the primary and secondary fry boil-outs — and
+   two different jobs could one day carry the same one. Trusting the title over
+   a stated series would collapse the first pair and merge the second.
+
+   ⚠️ A LEGACY ROW HAS NO SERIES, so it falls back to its title. See
+   `seriesResolver` for how it then finds the series its title belongs to. */
+export function seriesOf(a) {
+  if (!a) return "";
+  if (clean(a.byId)) return "";                 // a person wrote it
+  return clean(a.series) || TITLE_KEY(a.title);
+}
+
+/* ⚠️⚠️ A LEGACY ROW ADOPTS THE SERIES ITS TITLE MAPS TO, and this two-pass is
+   the whole reason the backlog clears.
+
+   🐛 Matt, Aug 21 2026, looking at the list AFTER the supersede fix shipped:
+   the same three "Ops checklists — tonight's recap" rows, unchanged. Every one
+   of them predates the `series` field, so keying on that field put them in
+   three groups of one and nothing ever replaced anything.
+
+   ⇒ First pass: learn which series each TITLE belongs to, from the records
+   that state one. Second pass: a record with no series adopts the series its
+   title maps to, and falls back to the bare title when nothing claims it.
+
+   ⇒ So tonight's "Ops checklists — tonight's recap" — which does carry
+   `series: "ops-recap"` — pulls the three older rows of the same name into its
+   own group, and the newest of them wins. Nothing is written to do it. */
+export function seriesResolver(list) {
+  const byTitle = new Map();
+  for (const a of announcementList(list)) {
+    if (!a || clean(a.byId)) continue;
+    const explicit = clean(a.series);
+    const title = TITLE_KEY(a.title);
+    if (explicit && title && !byTitle.has(title)) byTitle.set(title, explicit);
+  }
+  return (a) => {
+    if (!a || clean(a.byId)) return "";
+    const explicit = clean(a.series);
+    if (explicit) return explicit;
+    const title = TITLE_KEY(a.title);
+    return byTitle.get(title) || title;
+  };
+}
+
+export const sameSeries = (a, b, resolve) => {
+  const f = typeof resolve === "function" ? resolve : seriesOf;
+  const sa = f(a);
+  return !!sa && sa === f(b);
+};
+
+/* Mark every earlier announcement in `ev`'s series as replaced by it.
+
+   ⚠️ RETURNS A NEW LIST AND MUTATES NOTHING, so a caller that fails to save
+   has changed nothing. The whole list is rewritten on every write anyway.
+   ⚠️ NO SERIES MEANS NO SUPERSEDING. A blank series must never match another
+   blank series, or every hand-written announcement would replace the last one.
+   ⚠️ ALREADY-SUPERSEDED RECORDS ARE LEFT ALONE, so the stamp keeps naming the
+   announcement that first replaced it rather than the newest one. Who replaced
+   it is a fact about that day, not about today. */
+export function supersedeSeries(list, ev, at) {
+  const all = announcementList(list);
+  /* Learned from the whole list, so a legacy row is measured against the same
+     mapping the read path uses. */
+  const resolve = seriesResolver([ev, ...all]);
+  if (!resolve(ev)) return all;
+  const stamp = { at: clean(at) || clean(ev && ev.createdAt), byId: clean(ev && ev.id) };
+  if (!stamp.at || !stamp.byId) return all;
+  return all.map((a) => {
+    if (!a || a.id === ev.id) return a;
+    if (!sameSeries(a, ev, resolve)) return a;
+    if (isSuperseded(a)) return a;
+    return { ...a, supersededBy: stamp };
+  });
+}
 
 /* ── Who may see it ──────────────────────────────────────────────────────
    ⚠️⚠️ THE ONE RULE, AND BOTH HALVES OF THE APP ASK IT HERE. Matt: "Leaders
@@ -243,7 +388,45 @@ export function visibleTo(a, personId, isLeader) {
   return isTarget(a, personId);
 }
 
-export const forPerson = (list, personId, isLeader) =>
+/* ⚠️ SUPERSEDED ONES ARE FILTERED HERE, at the one place both halves of the
+   app already ask who may see what. Filtering in the screen instead would have
+   meant doing it in every screen, and missing one is how the clutter comes
+   back on a list nobody is watching. */
+export const forPerson = (list, personId, isLeader) => {
+  const all = announcementList(list);
+  /* ⚠️⚠️ THE NEWEST OF EACH SERIES WINS ON READ, NOT ONLY ON WRITE.
+
+     🐛 Matt, Aug 21 2026, looking at the list AFTER the supersede fix shipped:
+     the same three "Ops checklists — tonight's recap" rows, unchanged. The
+     stamp is only applied when a NEW announcement is written, so the backlog
+     would have sat there until every one of twenty jobs happened to run again.
+
+     ⇒ The stamp stays, because it is the record of what replaced what and when.
+     This is the BEHAVIOUR, and it is right immediately. A record and a view,
+     not two mechanisms competing. */
+  const resolve = seriesResolver(all);
+  const newest = new Map();
+  for (const a of all) {
+    const s = resolve(a);
+    if (!s) continue;
+    const at = String((a && a.createdAt) || "");
+    if (!at) continue;
+    const cur = newest.get(s);
+    if (!cur || at > cur) newest.set(s, at);
+  }
+  return all.filter((a) => {
+    if (!visibleTo(a, personId, isLeader)) return false;
+    if (isSuperseded(a)) return false;
+    const s = resolve(a);
+    /* ⚠️ STRICTLY OLDER, so two runs stamped the same instant both stand rather
+       than both vanishing. */
+    return !s || String(a.createdAt || "") >= (newest.get(s) || "");
+  });
+};
+
+/* The unfiltered view, for anything that has to see the whole record: the
+   retention purge, an export, a leader asking what the team was ever told. */
+export const forPersonIncludingSuperseded = (list, personId, isLeader) =>
   announcementList(list).filter((a) => visibleTo(a, personId, isLeader));
 
 /* ── The read list ───────────────────────────────────────────────────────
@@ -315,3 +498,64 @@ export function awaitingAck(list, personId) {
    screen that produced it. An announcement gets the same treatment. */
 export const ACK_STATEMENT =
   "I confirm I have read this announcement and understand what it asks of me.";
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ⭐⭐ WHAT THE NOTIFICATION ACTUALLY SAYS, AND WHERE TAPPING IT GOES.
+
+   Matt, Aug 20 2026, off a lock-screen photo showing only "Change fund order":
+   "When viewing an announcement you should see the whole thing here. Then maybe
+   after clicking on it that will trigger the acknowledgement?"
+
+   ⛔⛔ THE BUG WAS ONE LINE AND IT MADE THE WHOLE FEATURE POINTLESS.
+   `pushAnnouncement` sent `body: ev.title`, so the notification's body WAS the
+   title and the announcement text never left the Hub. A person got the name of
+   a message and no message. That is the "Opened 1 of 29" on the change fund
+   order: nobody opened it because nothing told them there was anything to open.
+
+   ⚠️⚠️ THE ACKNOWLEDGEMENT IS NOT AND MUST NOT BE A TAP, AND THAT IS THE HALF
+   OF MATT'S QUESTION THE ANSWER IS NO TO. Confirming stores a TYPED SIGNATURE
+   against `ACK_STATEMENT` above — "I confirm I have read this announcement and
+   understand what it asks of me" — and the comment there says why: the words
+   agreed to are stored beside the signature so a receipt can be read years
+   later. A lock-screen tap is "I dismissed a banner". Recording that as a
+   signature would empty the one field on the record that means anything.
+
+   ⇒ WHAT THE TAP DOES INSTEAD: it opens the Hub ON THIS ANNOUNCEMENT, already
+   expanded, which marks it OPENED and puts the Confirm box on screen with
+   nothing to hunt for. Reading is one tap; signing stays deliberate.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ⚠️ A LIMIT, BECAUSE A PUSH PAYLOAD IS NOT A DOCUMENT. Web push is capped
+   around 4KB after encryption and a phone shows roughly four lines expanded.
+   The number is the point at which a lock screen stops being the place to read
+   it, not a technical maximum. */
+export const PUSH_BODY_MAX = 350;
+
+export function pushBodyFor(a) {
+  const raw = String((a && a.body) || "").replace(/\r/g, "").trim();
+  if (!raw) return "";
+  /* ⚠️ COLLAPSE BLANK LINES, KEEP SINGLE ONES. A notification with three empty
+     lines in it wastes the four the phone gives you. */
+  const tidy = raw.replace(/\n{2,}/g, "\n").trim();
+  if (tidy.length <= PUSH_BODY_MAX) return tidy;
+  /* Cut on a word, never mid-word, and say plainly that there is more. */
+  const cut = tidy.slice(0, PUSH_BODY_MAX);
+  const at = cut.lastIndexOf(" ");
+  return `${(at > PUSH_BODY_MAX - 60 ? cut.slice(0, at) : cut).trimEnd()}…\n\nOpen the Hub to read the rest.`;
+}
+
+/* ⚠️ THE TITLE IS THE ANNOUNCEMENT'S OWN, NOT THE WORD "ANNOUNCEMENT". The OS
+   already draws the app name above it from the web manifest, so a title of
+   "Announcement" under a heading of "Gate City Hub" spent the one bold line on
+   saying nothing. When a signature is required the title says so, because that
+   is the thing a person needs to see before they decide to open it. */
+export function pushTitleFor(a) {
+  const t = String((a && a.title) || "").trim() || "Announcement";
+  return a && a.requiresAck ? `${t} — please confirm` : t;
+}
+
+/* Where the tap lands. `?to=` already opens a tool on load; `?open=` is the
+   row inside it. Both are stripped from the address bar immediately, so a
+   later refresh does not re-open anything. */
+export const pushUrlFor = (a) =>
+  `/?to=announce${a && a.id ? `&open=${encodeURIComponent(String(a.id))}` : ""}`;

@@ -28,7 +28,7 @@ import { boardShift, ownersForInput, isOwner as isBoardOwner, boardKey, mondayKe
      is running it. Nothing here knew what time a daypart STARTS until this —
      the four-a-day jobs are told by `&dp=` on the cron URL. */
   leadersOnDutyAt } from "./boardOwner.js";
-import { CHANNELS, STORE, STORE_CONFIG, tileAllowsId } from "./storeConfig.js";
+import { CHANNELS, STORE, STORE_CONFIG, storeCfg, tileAllowsId } from "./storeConfig.js";
 /* The star ledger's own rules. Only makeEntry may build a movement — it is what
    refuses a blank reason and a fractional amount — and starAwards decides who
    has earned one and who is blocked. Both are leaves. */
@@ -309,6 +309,9 @@ const FROM = `${STORE.legalName} <${STORE.notifyEmail}>`;
    ⚠️ A KEY, NOT storeConfig.js. That file ships to every browser, and four
    personal addresses in it would redo the Aug 4 leak that pulled 105 emails
    out of the public bundle. Read here on the service key and nowhere else. */
+/* A refused read, told apart from an absent one. `null` means the key is
+   genuinely not there yet, which at a new store is the normal state. */
+const UNREADABLE = Symbol("unreadable");
 const STORE_RECIPIENTS_KEY = "gcfcr-store-recipients-v1";
 
 /* ⚠️ SCOPED TO ONE STORE NUMBER, AND THAT IS THE WHOLE TRICK. Cash Audit is a
@@ -773,8 +776,24 @@ function icsFor({ uid, summary, description, at, mins, tz, organizer, organizerN
    ⚠️ `id` AND `createdAt` ARE ALWAYS GENERATED HERE and cannot be passed in.
    A caller that could set either could forge when something was sent. */
 async function writeAnnouncement(env, fields, known) {
-  const list = known === undefined ? await sbGetStrict(env, ANNOUNCE_KEY).catch(() => null) : known;
-  if (list === null) return null;
+  /* 🐛🐛 THIS USED TO BE `.catch(() => null)` FOLLOWED BY `if (list === null)
+     return null`, WHICH MADE THE FEATURE UNABLE TO START. `sbGetStrict` returns
+     null for an ABSENT key and throws only on a refused read — that distinction
+     is the entire reason it exists — and collapsing both into null meant the
+     record could only be written IF IT ALREADY EXISTED. At a store that has
+     never posted one it does not exist, so every `postHubRecap` call site
+     returned "nothing was written" from the day it shipped and no announcement
+     could ever reach the Hub. Nothing errored; the callers all treat a false
+     return as best effort.
+     ⇒ ABSENT NOW PROCEEDS AND CREATES THE RECORD. A REFUSED READ STILL REFUSES,
+     which is the protection that was actually wanted: writing `[ev]` over a
+     record that was merely unreadable would erase every announcement on file. */
+  let list;
+  if (known !== undefined) list = known;
+  else {
+    try { list = await sbGetStrict(env, ANNOUNCE_KEY); }
+    catch { return null; }
+  }
   const all = annList(list);
   const ev = annMake({
     ...(fields || {}),
@@ -1187,6 +1206,36 @@ async function resolveChannel(env, nameOrId) {
  * ⚠️ Everything else still runs for real — status keys are written, storage is
  * read — so a quiet run is a true rehearsal, not a simulation.
  */
+/* A channel post that cannot take the job down with it.
+   ⛔⛔ WHY THIS MATTERS MORE HERE THAN AT THE ORIGIN. `postToSlackChannel`
+   writes the Hub copy FIRST, above every return and every throw, so by the
+   time Slack is even attempted the message is already delivered and readable.
+   A throw after that point kills a job whose work is DONE.
+   🐛 Measured at the origin store, Aug 21 2026: `ops-recap` under Failing on
+   the Report Card every night, with "Slack channel not found or bot not
+   invited", while its announcement had landed perfectly. Matt: "Because we are
+   moving from slack to hub pushes can't this be fixed?" */
+async function postChannelSoft(env, channelName, text) {
+  try {
+    await postToSlackChannel(env, channelName, text);
+    return { ok: true };
+  } catch (e) {
+    const why = String((e && e.message) || e);
+    console.log(`[channel down] ${channelName}: ${why}; the Hub copy still went`);
+    /* ⚠️ RECORDED, NOT JUST LOGGED. A console line dies with the request.
+       `noteJobRun` reads this into the run record, so "the Hub got it, Slack
+       did not" is a fact somebody can look up tomorrow. Capped, and wrapped,
+       because recording must never be the thing that breaks a delivered job. */
+    try {
+      if (env) {
+        if (!Array.isArray(env.__slackDown)) env.__slackDown = [];
+        if (env.__slackDown.length < 5) env.__slackDown.push(`#${channelName}: ${why}`);
+      }
+    } catch { /* nothing here is worth failing a delivered message over */ }
+    return { ok: false, error: why, channel: channelName };
+  }
+}
+
 async function postToSlackChannel(env, channelName, text) {
   /* ⚠️⚠️ THIS EARLY RETURN IS THE ONE THAT UNBREAKS THE SEVENTEEN JOBS, and it
      has to sit ABOVE resolveChannel rather than inside sendSlack. resolveChannel
@@ -1543,6 +1592,12 @@ async function runSlackAvatars(env) {
 //    Cloudflare KV binding (fast, no Supabase round-trip needed for this).
 //    Cron can occasionally double-fire on retries; this prevents a
 //    duplicate Slack post/email in that case. ──
+/* ⚠️ LONG ENOUGH THAT A SLOW JOB IS NOT DOUBLE-RUN, SHORT ENOUGH THAT A DEAD
+   ONE IS RETRYABLE THE SAME MORNING. Fifteen minutes is mine, not Matt's, which
+   is why it is a named constant. The old behaviour was effectively a 24-hour
+   lease that was never released. */
+const JOB_LEASE_SECONDS = 15 * 60;
+
 async function alreadyRanToday(env, jobKey) {
   /* 🐛 WAS toISOString() — UTC, while every other date in this file is ET via
      isoOfD(nowET()). Concrete failure: a manual run at 9pm ET Monday (already
@@ -1554,10 +1609,63 @@ async function alreadyRanToday(env, jobKey) {
      ⚠️ `isoOfD` is a const declared below this function. Safe: this is only
      ever called from a request handler, long after module evaluation. */
   const today = isoOfD(nowET());
-  const last = await env.GATE_CITY_KV.get(`ran:${jobKey}`);
-  if (last === today) return true;
-  await env.GATE_CITY_KV.put(`ran:${jobKey}`, today, { expirationTtl: 60 * 60 * 24 * 3 });
+
+  /* ⛔⛔ CONFIRMED, NOT CLAIMED. THIS USED TO WRITE THE WHOLE-DAY MARKER RIGHT
+     HERE, BEFORE THE JOB HAD DONE ANYTHING.
+
+     🐛 Measured Aug 21 2026 on `backup`, which had never once recorded a run.
+     Matt called it: the marker was written, the job then died on Cloudflare's
+     subrequest limit, and every call for the rest of that day answered
+     "already-ran-today". So the job marked ITSELF as done, locked itself out,
+     and left nothing behind saying why. The Report Card read "no run on
+     record", which was true and told nobody anything.
+
+     ⚠️⚠️ AND IT COULD NOT EVEN REPORT THE DEATH. `noteJobRun` stamps over the
+     network, and a job that has exhausted its subrequests has none left to
+     stamp with — so the one failure that most needs writing down is the one
+     that cannot write. That is why the record was empty rather than `ok:false`.
+
+     ⇒ Two markers now, and the split is the whole fix:
+
+       `ran:<job>`    the day is DONE. Written by `confirmRanToday`, only after
+                      the job actually answered ok.
+       `lease:<job>`  a run is IN FLIGHT. Short TTL, written here.
+
+     ⚠️ `ran:` KEEPS ITS EXACT OLD SHAPE — the ET date string — so every marker
+     already in KV still reads as "done today" and nothing double-runs on the
+     deploy that ships this. Rule 1.
+     ⚠️ THE LEASE IS WHAT STOPS A DOUBLE RUN while a job is still working, which
+     is the job the old early-write was really doing. It expires, so a death
+     costs one lease rather than a whole day.
+     ★ Both markers are Cloudflare KV through the binding, which does NOT spend
+     a subrequest. That matters here more than anywhere: this guard has to keep
+     working in exactly the state that broke everything else. */
+  const done = await env.GATE_CITY_KV.get(`ran:${jobKey}`);
+  if (done === today) return true;
+
+  const lease = await env.GATE_CITY_KV.get(`lease:${jobKey}`);
+  if (lease) return true;
+
+  await env.GATE_CITY_KV.put(`lease:${jobKey}`, today, { expirationTtl: JOB_LEASE_SECONDS });
   return false;
+}
+
+/* The other half. Called by the dispatcher only when the job answered ok.
+   ⚠️ A FAILED RUN CONFIRMS NOTHING, which is the point: it stays retryable, and
+   the next cron fire or a `&force=1` gets another go. The lease is cleared so
+   that retry does not have to wait it out.
+   ⚠️ IT NEVER THROWS. A marker that cannot be written must not turn a job that
+   worked into a job that reports failure. */
+async function confirmRanToday(env, jobKey, ok) {
+  if (!jobKey || (env && env.__QUIET)) return;
+  try {
+    if (ok) {
+      await env.GATE_CITY_KV.put(`ran:${jobKey}`, isoOfD(nowET()), { expirationTtl: 60 * 60 * 24 * 3 });
+    }
+    await env.GATE_CITY_KV.delete(`lease:${jobKey}`);
+  } catch (e) {
+    console.error("job-marker write failed:", e);
+  }
 }
 
 // ── Eastern-time helper — DST-safe ──
@@ -1904,6 +2012,7 @@ async function backupReadTable(env, table, order) {
     const url = `${env.SUPABASE_URL}/rest/v1/${table}`
       + `?select=*&order=${encodeURIComponent(order)}.asc`
       + `&limit=${BACKUP_PAGE}&offset=${offset}`;
+    bkSpend(env);
     const res = await fetch(url, {
       headers: {
         apikey: env.SUPABASE_SERVICE_KEY,
@@ -1949,6 +2058,27 @@ async function backupReadTable(env, table, order) {
    could not be listed must never be written up as "0 objects", because a
    manifest claiming success is worse than no manifest at all. */
 const BACKUP_BUCKETS = ["hr-files", "Receipts", "l101-coursework", "trainer-task-photos", "hub-assets"];
+/* ⛔⛔ CLOUDFLARE COUNTS `fetch` CALLS PER INVOCATION AND KILLS THE WORKER AT
+   THE CAP. Measured Aug 21 2026, the first time this job was ever called:
+   `Too many subrequests by single Worker invocation`. 595 files is 595 fetches
+   on a first run, on top of the table pages and the bucket listings.
+
+   ⚠️⚠️ AND THE DEATH COULD NOT REPORT ITSELF. `noteJobRun` stamps over the
+   network, so a job that has spent every subrequest has none left to say it
+   died with. The record stayed empty rather than `ok:false`, and the Report
+   Card said "no run on record" — true, and useless.
+
+   ⇒ THE BUDGET IS THE FIX, AND THE HEADROOM IS THE POINT. It stops well short
+   of the cap so the stamp, the day marker and the response all still fit. A run
+   that hits it copies what it can, says how many are left, and WRITES NO
+   MANIFEST. The next run continues, because the copy has always been
+   incremental — an object already in R2 at the same size costs no fetch at all.
+   ⚠️ 400 is mine, not measured against the real cap, which is why it is named.
+   595 files converge in two runs and then it is a handful a night forever. */
+const BACKUP_FETCH_BUDGET = 400;
+const bkSpend = (env) => { env.__backupFetches = (env.__backupFetches || 0) + 1; };
+const bkSpent = (env) => env.__backupFetches || 0;
+
 const BACKUP_LIST_PAGE = 100;
 /* A runaway guard, not a size limit, matching BACKUP_MAX_ROWS above. */
 const BACKUP_MAX_FILES = 20000;
@@ -1967,6 +2097,7 @@ const backupFilesName = () => `backup-files-${isoOfD(nowET())}.json`;
    by `checks/` and this one cannot. A backup that copied 19 of 595 files
    shipped green precisely because the walk lived in here. */
 async function backupListPage(env, bucket, prefix, offset) {
+  bkSpend(env);
   const res = await fetch(`${env.SUPABASE_URL}/storage/v1/object/list/${encodeURIComponent(bucket)}`, {
     method: "POST",
     headers: {
@@ -2002,6 +2133,7 @@ async function backupHasFile(env, key, size) {
 }
 
 async function backupCopyFile(env, bucket, name) {
+  bkSpend(env);
   const res = await fetch(
     `${env.SUPABASE_URL}/storage/v1/object/${encodeURIComponent(bucket)}/${name.split("/").map(encodeURIComponent).join("/")}`,
     { headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } },
@@ -2021,7 +2153,7 @@ async function runBackupFiles(env) {
   const startedAt = Date.now();
   const manifest = [];
   const perBucket = {};
-  let copied = 0, skipped = 0, bytes = 0;
+  let copied = 0, skipped = 0, bytes = 0, remaining = 0;
 
   for (const bucket of BACKUP_BUCKETS) {
     /* ⛔ NOT WRAPPED. A listing that fails takes the whole job down rather than
@@ -2031,13 +2163,28 @@ async function runBackupFiles(env) {
     for (const o of objects) {
       const key = `files/${bucket}/${o.name}`;
       manifest.push({ bucket, name: o.name, size: o.size, updatedAt: o.updatedAt });
+      /* ⚠️ A HEAD THROUGH THE BINDING COSTS NO SUBREQUEST, so the skip path
+         is free and an already-backed-up library finishes in one run. */
       if (await backupHasFile(env, key, o.size)) {
         skipped++; perBucket[bucket].skipped++;
         continue;
       }
+      if (bkSpent(env) >= BACKUP_FETCH_BUDGET) { remaining++; continue; }
       bytes += await backupCopyFile(env, bucket, o.name);
       copied++; perBucket[bucket].copied++;
     }
+  }
+
+  /* ⛔⛔ A PARTIAL RUN WRITES NO MANIFEST AT ALL. The manifest is the thing a
+     restore reads, and one listing files that are not in R2 is the "looks
+     complete and is not" failure this whole job exists to avoid — the same
+     rule as the row cap, which refuses rather than filing a short backup.
+     ⚠️ It reports `remaining` instead, which `noteJobRun` already carries into
+     the run record, so a store can see it is mid-way rather than finished. */
+  if (remaining) {
+    return { done: false, copied, skipped, remaining, files: manifest.length, bytes,
+             buckets: perBucket, ms: Date.now() - startedAt,
+             note: `subrequest budget spent; ${remaining} file(s) left for the next run` };
   }
 
   /* ⚠️ THE MANIFEST IS WRITTEN LAST, AFTER EVERY COPY HAS LANDED. Written
@@ -2053,7 +2200,7 @@ async function runBackupFiles(env) {
     files: manifest,
   }), { httpMetadata: { contentType: "application/json" } });
 
-  return { file: name, copied, skipped, files: manifest.length, bytes, buckets: perBucket, ms: Date.now() - startedAt };
+  return { done: true, file: name, copied, skipped, files: manifest.length, bytes, buckets: perBucket, ms: Date.now() - startedAt };
 }
 
 /* ⚠️⚠️ THE STORE IS IN THE FILENAME, AND THAT IS NOT COSMETIC.
@@ -2138,7 +2285,7 @@ async function runBoilOutFry(env) {
   const dow = now.getDay();
   const today = isoOfD(now);
   if (dow === 1) {
-    await postToSlackChannel(env, BOIL_CHANNEL,
+    await postChannelSoft(env, BOIL_CHANNEL,
       `*Boil Out — Primary Fry*\nPlease boil out the *primary fry* before 11am today.\n\n<!channel>`);
     const p = await pushBoilOut(env, "Boil out the primary fry", "Before 11am today.");
     return { posted: "primary-fry", date: today, pushed: p };
@@ -2150,7 +2297,7 @@ async function runBoilOutFry(env) {
     // rather than wrapping round.
     const onCycle = Number.isInteger(weeks) && weeks >= 0 && weeks % 2 === 0;
     if (!onCycle) return { skipped: "off-cycle-tuesday", date: today, weeksFromAnchor: weeks };
-    await postToSlackChannel(env, BOIL_CHANNEL,
+    await postChannelSoft(env, BOIL_CHANNEL,
       `*Boil Out — Secondary Fry*\nPlease boil out the *secondary fry* before 11am today.\n\n<!channel>`);
     const p = await pushBoilOut(env, "Boil out the secondary fry", "Before 11am today.");
     return { posted: "secondary-fry", date: today, weeksFromAnchor: weeks, pushed: p };
@@ -2167,7 +2314,7 @@ async function runBoilOutHenny(env) {
   const n = HENNY_BY_DOW[dow];
   if (!n) return { skipped: "weekend", date: today };
   if (!boilFirstFullWeek(now)) return { skipped: "not-first-full-week", date: today };
-  await postToSlackChannel(env, BOIL_CHANNEL,
+  await postChannelSoft(env, BOIL_CHANNEL,
     `*Boil Out — Henny ${n}*\nClosing leaders: please complete the *Henny ${n}* boil out between 5 and close tonight.\n\n<!channel>`);
   // It already says "Closing leaders" — so tell the closing leaders, not the room.
   const p = await pushBoilOut(env, `Henny ${n} boil out`, "Between 5 and close tonight.", true);
@@ -2425,7 +2572,7 @@ async function runCleaningSummary(env) {
      for a report that is now one person's job. The post stays as the record —
      push and DM only reach people who have enabled them — but it no longer
      interrupts everybody to say a task is outstanding. */
-  await postToSlackChannel(env, CHANNELS.brand, body);
+  await postChannelSoft(env, CHANNELS.brand, body);
 
   /* ⚠️ EACH DELIVERY IN ITS OWN TRY. A failed DM must not stop the push, and
      neither must stop the channel post above, which already happened. */
@@ -2547,7 +2694,12 @@ async function runWeekCutReport(env, forced = false) {
   const startIso = isoOfD(mon);
   const ym = `${mon.getFullYear()}-${pad2(mon.getMonth() + 1)}`;
   const get = (k) => sbGet(env, k);
-  const plan = await weekCutPlan(ym, startIso, 6, get);
+  /* ⚠️ THE HOLIDAY POLICY, AND THE WORKER READS THE DEPLOYED CONFIG. Without it
+     `p.holiday` is empty and this cut plan budgets a holiday week as an ordinary
+     one. `applyStoreOverrides` runs only in the BROWSER, so what `storeCfg`
+     answers here is what is compiled into storeConfig.js, never what a store
+     saved — the same limit HUB_HOST already carries, stated rather than hidden. */
+  const plan = await weekCutPlan(ym, startIso, 6, get, storeCfg("holidays", null));
   if (!plan) return { skipped: "labor basis unreadable", startIso };
   const expected = [];
   for (let i = 0; i < 6; i += 1) {
@@ -2598,7 +2750,7 @@ async function runWasteInputCheck(env) {
      Accountability belongs with the function.
      ⚠️ THE OWNER DM IS GONE, not kept alongside. Matt is in that channel, so
      keeping both would have pinged him twice for one fact. */
-  await postToSlackChannel(env, CHANNELS.inventory, text);
+  await postChannelSoft(env, CHANNELS.inventory, text);
   return { date: target, logged: status.logged.length, missing: status.missing, to: CHANNELS.inventory };
 }
 
@@ -2661,7 +2813,7 @@ async function runWasteReport(env) {
     `\n\n*Donations:*\n${donLines.length ? donLines.join("\n") : "None logged this week."}` +
     `\n\n<!channel>`;
 
-  await postToSlackChannel(env, CHANNELS.inventory, text);
+  await postChannelSoft(env, CHANNELS.inventory, text);
 
   /* ★ AND AS AN ANNOUNCEMENT LEADERS MUST CONFIRM. Same reasoning as the
      cleaning summary directly above: the channel post is untouched, this is in
@@ -2704,7 +2856,7 @@ function orderCalcFor(dayName, entry) {
 async function runAuditOrderCalc(env) {
   const entries = (await sbGet(env, AUDIT_KEY)) || [];
   if (!entries.length) {
-    await postToSlackChannel(env, CHANNELS.opsSuccess, "*Change Fund Order* — no audit entries on file yet, nothing to calculate.");
+    await postChannelSoft(env, CHANNELS.opsSuccess, "*Change Fund Order* — no audit entries on file yet, nothing to calculate.");
     return;
   }
   /* ⚠️ A SAFE COUNT DATED IN THE FUTURE IS NOT A COUNT (Aug 9 2026 sweep,
@@ -2728,7 +2880,7 @@ async function runAuditOrderCalc(env) {
   const future = dated.filter((e) => e.date > todayIso);
   const usable = dated.filter((e) => e.date <= todayIso);
   if (!usable.length) {
-    await postToSlackChannel(env, CHANNELS.opsSuccess,
+    await postChannelSoft(env, CHANNELS.opsSuccess,
       `*Change Fund Order* — nothing usable on file.` +
       (future.length ? ` ${future.length} entr${future.length === 1 ? "y is" : "ies are"} dated in the future and were ignored. Check the Cash Audit ledger.` : ""));
     return;
@@ -2752,7 +2904,7 @@ async function runAuditOrderCalc(env) {
      The channel post STAYS as the shared record — it is the audit trail and
      the fallback if the DM below fails to resolve — it just stops being an
      alarm on 35 phones before dawn. */
-  await postToSlackChannel(env, CHANNELS.opsSuccess, text);
+  await postChannelSoft(env, CHANNELS.opsSuccess, text);
 
   // …and the person who actually owns it gets it directly.
   try {
@@ -3122,7 +3274,7 @@ async function runFoodSafetyReminder(env) {
     `Don't forget to run today's walkthrough. Rest of today's to-dos:\n\n` +
     todos.join("\n") +
     `\n\n<!channel>`;
-  await postToSlackChannel(env, CHANNELS.brand, text);
+  await postChannelSoft(env, CHANNELS.brand, text);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -3171,7 +3323,7 @@ async function runFoodSafetyWeekly(env) {
 
   if (wk.length === 0) {
     const body = "No walkthroughs were recorded this week.";
-    await postToSlackChannel(env, CHANNELS.brand,
+    await postChannelSoft(env, CHANNELS.brand,
       `*Weekly Food Safety Report — ${start} to ${end}*\n${body}\n\n<!channel>`);
     if (R) {
       await sendEmail(env, R.to, `Weekly Food Safety Report — ${start} to ${end}`,
@@ -3215,7 +3367,7 @@ async function runFoodSafetyWeekly(env) {
   const worstLine = worst ? `\n\n:mag: Most catches: ${worst.by || "—"} — ${worst.n} found${worst.date ? ` on ${worst.date}` : ""}` : "";
   const closer = "\n\n_Every catch is a problem fixed before it costs us. Thanks for staying on these._";
 
-  await postToSlackChannel(env, CHANNELS.brand,
+  await postChannelSoft(env, CHANNELS.brand,
     `*Weekly Food Safety Report — ${start} to ${end}*\n${headline}${doerLine}\n\n*Caught this week:*\n${tierLines}${worstLine}${closer}\n\n<!channel>`);
 
   /* ⚠️ GUARDED, LIKE THE BRANCH ABOVE. `R` can be null now that there is no
@@ -3663,7 +3815,7 @@ async function runFoodSafetyAssign(env) {
     : noMap
       ? `*Food Safety Walkthrough — ${dayName} ${today}*\nCouldn't work out who is eligible — the roster hasn't reached this job yet. Please assign someone manually and tell Matt.\n\n<!channel>`
       : `*Food Safety Walkthrough — ${dayName} ${today}*\nNo leader at Senior Trainer or above is on the board today, so nobody could be assigned. Please assign someone manually.\n\n<!channel>`;
-  await postToSlackChannel(env, CHANNELS.brand, text);
+  await postChannelSoft(env, CHANNELS.brand, text);
 
   /* `mentioned` makes a silent fallback visible in the job history — otherwise
      "they never get pinged" looks identical to "the job didn't run". */
@@ -4375,7 +4527,7 @@ async function runTrainerTasksSummary(env) {
        0-of-11 trainers reachable in the first place. Removing them to satisfy a
        reading of one sentence would quietly undo that, so they stay and she has
        been told they stay. */
-    await postToSlackChannel(env, CH_TRAINERS, slackText);
+    await postChannelSoft(env, CH_TRAINERS, slackText);
   }
 
   /* ★ PUSH EACH TRAINER THEIR OWN TASK. The job already knows exactly whose
@@ -4715,7 +4867,7 @@ async function runOpsChecklistRecap(env) {
   } else {
     text = `*Ops Checklists — all ${total} signed off today.* ✅`;
   }
-  await postToSlackChannel(env, CHANNELS.opsSuccess, text);
+  await postChannelSoft(env, CHANNELS.opsSuccess, text);
 
   /* ── Tell the leader whose shift it is ─────────────────────────────
      Matt's rule: "for the checklist and cleaning lists I want it to assign by
@@ -5002,7 +5154,7 @@ async function runKiaMileageReminder(env) {
   if (now.getDate() !== target) {
     return { skipped: "not the last business day", today: isoOfD(now), posts_on: target };
   }
-  await postToSlackChannel(env, CH_CATERING,
+  await postChannelSoft(env, CH_CATERING,
     `*End of the month — two things for the Kia*\n` +
     `• A photo of the current mileage\n` +
     `• The oil change status\n\n` +
@@ -5037,7 +5189,7 @@ async function runSupplyReminder(env) {
       `Supply Central has no sign-out log at all, so the dashboard cannot tell whether an order is overdue.\n` +
       `Recording one order in the Hub → Supply Central starts the ${SUPPLY_STALE_DAYS}-day clock and this reminder goes quiet until it is due again.`;
 
-  await postToSlackChannel(env, SUPPLY_CHANNEL, text);
+  await postChannelSoft(env, SUPPLY_CHANNEL, text);
 
   /* Push as well as Slack — Matt, Jul 29: "that's the purpose of the push
      notifications, for as much as possible." Slack is the record, push is
@@ -5599,6 +5751,13 @@ async function noteJobRun(env, job, label, startedAt, res) {
       for (const k of ["skipped", "reason", "posted", "sent", "findings", "reachable", "changed", "note", "error", "dp", "remaining", "rows"]) {
         if (body[k] !== undefined) detail[k] = typeof body[k] === "string" ? String(body[k]).slice(0, 160) : body[k];
       }
+    }
+    /* ⚠️ THE SLACK LEG, IF IT WENT DOWN DURING THIS RUN. Read off `env` rather
+       than the body because no job branch would otherwise carry it. The run
+       stays `ok` — the Hub copy is the delivery — but "Slack did not take it"
+       must not vanish with the log line. */
+    if (env && Array.isArray(env.__slackDown) && env.__slackDown.length) {
+      detail.slackDown = env.__slackDown.slice(0, 5);
     }
     await sbSet(env, jobRunKey(label || job), {
       job, at: new Date().toISOString(), ok, status: res.status,
@@ -6587,7 +6746,7 @@ async function runIpoWeeklyReminder(env) {
     `Directors: ${done}/${total} action items checked off this week. Still open:\n` +
     openCats.join("\n") +
     `\n\nCheck them off in the Hub \u2192 IPO Action Items.\n<!channel>`;
-  await postToSlackChannel(env, IPO_DIRECTORS_CHANNEL, text);
+  await postChannelSoft(env, IPO_DIRECTORS_CHANNEL, text);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -6624,7 +6783,7 @@ async function runDailyAiSummary(env) {
      still lands in the channel; it simply no longer notifies everyone.
      Anyone who wants the alert can follow the channel or the digest reaches
      directors as a per-person AI summary already. */
-  await postToSlackChannel(env, CHANNELS.opsSuccess, text);
+  await postChannelSoft(env, CHANNELS.opsSuccess, text);
 }
 
 /* ═══ TEAM EMAILS — SERVER-SIDE ONLY (Jul 31 2026) ═══════════════════════
@@ -7432,7 +7591,7 @@ async function runTeamScoreboard(env, forced) {
      a SECOND announcement for the same week. */
   let res = null, slackWhy = "";
   try {
-    res = await postToSlackChannel(env, TEAM_CHANNEL, text);
+    res = await postChannelSoft(env, TEAM_CHANNEL, text);
   } catch (e) {
     slackWhy = String(e && e.message ? e.message : e).slice(0, 120);
   }
@@ -10445,6 +10604,21 @@ export default {
          does not happen. It costs one round trip and it is the only reason any
          of this is here. */
       await noteJobRun(env, job, dedupJobKey, jobStartedAt, jobRes);
+      /* ⚠️ AFTER the stamp and BEFORE the return, and only if the job actually
+         answered ok. This is the half that makes the day marker mean "it was
+         done" rather than "it was attempted". A failed run clears its lease and
+         confirms nothing, so it is retryable immediately. */
+      if (job && !forced && !env.__QUIET) {
+        /* ⚠️⚠️ A JOB THAT SAYS IT IS NOT FINISHED DOES NOT CONFIRM THE DAY.
+           The backup copies what its subrequest budget allows and answers
+           `done: false` with a count of what is left. Confirming on that would
+           mark the day done after one partial pass and the library could never
+           finish. Only an explicit `done: false` blocks it, so the other forty
+           jobs — which carry no `done` at all — behave exactly as before. */
+        let finished = true;
+        try { const b = await jobRes.clone().json(); finished = !(b && b.done === false); } catch { /* not JSON, fine */ }
+        await confirmRanToday(env, dedupJobKey, jobRes.status < 400 && finished);
+      }
       return jobRes;
     }
 
@@ -13443,7 +13617,7 @@ export default {
         const who = await hubRank(env, uid);
         const isLeader = tierForRank(who.rank) >= 3;
 
-        const all = escList(await sbGetStrict(env, ESCALATIONS_KEY).catch(() => null));
+        const all = escList(await sbGetStrict(env, ESCALATIONS_KEY));
 
         if (action === "send") {
           if (!escIsReason(b && b.reason)) return no("pick a reason", 400);
@@ -13754,12 +13928,17 @@ export default {
         const who = await hubRank(env, uid);
         const isLeader = tierForRank(who.rank) >= 3;
 
-        const list = await sbGetStrict(env, ANNOUNCE_KEY).catch(() => null);
+        const list = await sbGetStrict(env, ANNOUNCE_KEY).catch(() => UNREADABLE);
         /* ⚠️ A FAILED READ IS NOT AN EMPTY LIST. Writing a rebuilt array on top
            of a read that failed erases every announcement in the store — the
            exact bug the rollouts tile shipped with. sbGetStrict throws rather
            than answering null, and this refuses rather than guessing. */
-        if (list === null) return no("could not read the announcements just now, so nothing was changed", 503);
+        /* ⚠️ SAME BUG AS writeAnnouncement, SAME FIX. An absent record is a
+           store with no announcements yet, not an unreadable one, and refusing
+           here meant the very first "create" could never land. `annList` turns
+           null into [], so "open" and "retract" fall through to their own 404
+           rather than a misleading 503. */
+        if (list === UNREADABLE) return no("could not read the announcements just now, so nothing was changed", 503);
         const all = annList(list);
 
         /* ── mark it opened ──────────────────────────────────────────────

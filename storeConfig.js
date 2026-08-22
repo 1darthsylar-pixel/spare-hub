@@ -870,6 +870,66 @@ const CONFIG = {
     maxDropsPerWeek: 2,
   },
 
+  /* ── 7b. HOLIDAY HOURS ──────────────────────────────────────────────────
+     Matt, Aug 21 2026: "most open at 10:30 but days like christmase eve and
+     new years eve we open at 6. build this into the lineup systam so it doesnt
+     need entered anymore but leave the option to edit."
+
+     ⭐ THE DATES ARE NOT HERE AND NEVER WILL BE. `usHolidays.js` computes them,
+     because Thanksgiving is the fourth Thursday of November in every
+     restaurant in the country and that is arithmetic, not an opinion. THIS is
+     the opinion: whether this store opens, when, and what it expects to take.
+
+     ⛔ EVERY VALUE IS EMPTY IN THE SOURCE AND THEY ALL STAY EMPTY, exactly like
+     `messagingOff` and `swaps` above, and for the reason storeHours.js gives at
+     length: a seeded 10:30 arrives in another operator's repo looking
+     deliberate, and a wrong CLOSING time does not fail — it rosters somebody
+     for a shift the store is not open for and the board looks entirely normal.
+
+     ⇒ The store sets these ONCE on its own screen and then never types a date
+     again. That is what "doesn't need entering" means here: not that the hours
+     are pre-decided, but that they are decided once instead of eight times a
+     year, forever.
+
+     ⚠️ A DATE THE OPERATOR TYPED OR PASTED ALWAYS WINS. These are defaults for
+     days nobody has said anything about. "Leave the option to edit" is not a
+     nicety; ControlPoint disagreed with the store's own rule on Black Friday,
+     and the override is where that gets settled.
+
+       open / close      minutes from midnight, the unit storeHours.js uses
+       baseSales         what a short holiday is expected to take, in dollars,
+                         so the Labor Planner can budget a day that has no
+                         comparable weekday. Replaced by the real figure once a
+                         holiday has actually been traded and recorded.
+       byKey             per-holiday, keyed to usHolidays.js:
+                           { closed: true }        shut, whatever the default
+                           { open, close }         its own hours
+                           { baseSales }           its own expected sales */  holidays: {
+    /* ⛔⛔ EVERY VALUE HERE IS NULL AND STAYS NULL UNTIL THIS STORE TYPES ITS
+       OWN. The origin store's `storeConfig.js` carries real hours and a real
+       `baseSales`, and its own comment says in bold: "DO NOT COPY THESE NUMBERS
+       INTO A CLONE." They are that building's hours and that building's volume.
+
+       ⚠️⚠️ AND BLANK IS NOT A TO-DO LEFT HALF-DONE, IT IS THE WORKING STATE.
+       `holidayDefault` answers null for a store that has said nothing, and every
+       reader treats null as "use the ordinary weekday rule" — which is exactly
+       what a store that has not set holiday hours means. Nothing is broken and
+       nothing needs entering before this store is ready.
+
+       ⛔ A SEEDED 10:30 WOULD BE WORSE THAN BLANK, and that is the whole reason.
+       It arrives looking deliberate, nobody reports it, and a wrong CLOSING time
+       does not fail loudly — it rosters somebody for a shift the store is not
+       open for and the board looks entirely normal. Uneditable-and-wrong beats
+       blank only in the sense that it is far worse (rule 18).
+
+       ⇒ The store fills this in ONCE, on its own screen: Store Settings →
+       Holiday hours. Not here. */
+    open: null,
+    close: null,
+    baseSales: null,
+    byKey: {},
+  },
+
   /* ★★ WHAT THIS STORE CALLS ITS OWN LEADERSHIP ROLES.
      See `extraTitleRanks()` below for the whole reasoning. Each entry is a
      title this store uses, pointed at a rank the Hub already has.
@@ -1066,6 +1126,23 @@ const isPlain = (v) => !!v && typeof v === "object" && !Array.isArray(v);
    store's config has no `doors` section yet. When it gains one, add the path —
    that store lost every opening time a person typed until this was fixed. */
 const OPEN_KEY_MAPS = new Set([
+  /* ⛔⛔ WITHOUT THIS, EVERY PER-HOLIDAY SETTING A STORE SAVES IS SILENTLY
+     DISCARDED ON THE NEXT LOAD. Added Aug 21 2026, before the screen that
+     writes it was built, because the screen would have looked like it worked.
+
+     `mergeDeep` only lets an override fill a key the defaults already know, so
+     a typo cannot invent a setting nothing reads. `holidays.byKey` is the
+     opposite shape: its KEYS are the store's answer — `laborDay`, `christmasEve`
+     — and a store may name any holiday, including ones the shipped default has
+     no row for.
+
+     🐛 MEASURED AT THE ORIGIN BEFORE THIS LINE EXISTED: saving
+     `{ laborDay: { closed: true } }` came back `undefined`, while
+     `christmasEve` survived only because the default happened to carry a row
+     for it. So five holidays saved and the other six vanished, with no error
+     and the screen showing the change until the page reloaded.
+     ⚠️ SAME BUG `hr.extraTitles` IS ALREADY HERE FOR, one entry down. */
+  "holidays.byKey",
   "hr.extraTitles",
 ]);
 

@@ -418,6 +418,65 @@ export async function kvSet(key, value, member) {
   return kvSetDirect(key, value);
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   ★★ SAVE ONLY IF THE RECORD IS STILL THE ONE YOU READ.
+
+   Aug 16 2026, from a structural audit. `kvSet` is a blind PUT of a whole
+   record, and the schedule has eight writers. Two leaders open Lineup, both
+   read the week, both save, and the first one's entire week is gone with no
+   error and no record.
+
+   `ifSavedAt` is the `savedAt` the caller loaded. The Worker compares it
+   against what is stored and refuses with 409 when they differ.
+
+   Returns { ok, conflict, savedAt }:
+     { ok: true }                        it saved
+     { ok: false, conflict: true, savedAt } somebody else saved first; `savedAt`
+                                         is theirs, so the caller can re-read,
+                                         redo its work and try again
+     { ok: false }                       an ordinary refusal or transport failure
+
+   ⚠️ THREE OUTCOMES, NOT TWO, AND THAT IS THE WHOLE REASON THIS IS NOT JUST
+   `kvSet`. "Somebody else got there first" and "the write failed" need
+   different sentences on screen and different behaviour in code: one is retry
+   after re-reading, the other is stop and tell somebody. Folding them into a
+   boolean is how a conflict turns back into a silent overwrite.
+
+   ⚠️ HR KEYS DO NOT COME THROUGH HERE. They route to /api/hr-store, which has
+   its own path and its own rules; sending them here would skip that.
+   ⚠️ NO `ifSavedAt` MEANS AN ORDINARY WRITE, so this is safe to call from a
+   path that does not yet know the version. */
+export async function kvSetIf(key, value, ifSavedAt) {
+  if (!isShared) {
+    /* Local mode is one browser tab against localStorage. There is no second
+       writer to conflict with, so the guard is a no-op rather than a fake. */
+    return { ok: await kvSetDirect(key, value) };
+  }
+  try {
+    const res = await fetch("/api/kv-set", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-hub-token": hubToken() },
+      body: JSON.stringify(
+        ifSavedAt ? { key, value, ifSavedAt: String(ifSavedAt) } : { key, value },
+      ),
+    });
+    absorbTokenRefresh(res);
+    const r = await res.json().catch(() => null);
+    if (res.status === 409) {
+      return { ok: false, conflict: true, savedAt: (r && r.savedAt) || "" };
+    }
+    if (r && r.ok && r.authed === false) {
+      try { window.dispatchEvent(new CustomEvent("hub:save-signed-out")); } catch {}
+    }
+    if (r && r.ok) return { ok: true };
+    console.error("kv-set conditional write refused:", key, JSON.stringify(r));
+    return { ok: false };
+  } catch (e) {
+    console.error("kv-set conditional write threw:", key, e);
+    return { ok: false };
+  }
+}
+
 /* Returns { ok, value }. `ok:false` is ONLY a transport/database failure.
    A key that simply is not there is a successful read of nothing:
    { ok: true, value: null }. Callers that seed or autosave depend on that

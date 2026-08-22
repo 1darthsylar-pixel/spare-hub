@@ -35,6 +35,10 @@ import { CARD_3D, cardSurface, accentEdge } from "./cardStyle.js";
 import { hubToken } from "./store.js";
 import { STORE_CONFIG, storeCfg, tokenLabel, tokenLabelOne } from "./storeConfig.js";
 import { checkStoreSettings, changedPaths, atPath as at, setPath as setAt, pruneDefaults } from "./storeSettingsImport.js";
+/* The holidays themselves are arithmetic, not an opinion — Thanksgiving is the
+   fourth Thursday of November in every restaurant in the country. What this
+   store DOES about them is the opinion, and that is what this screen sets. */
+import { HOLIDAY_KEYS, HOLIDAY_NAMES } from "./usHolidays.js";
 
 const NAVY = "#223C6A";
 const RED = "#DD0031";
@@ -290,7 +294,32 @@ function stationRows(stations, house) {
 
 /* Turn a dotted path into the words the confirm screen shows. Falls back to the
    path itself rather than hiding a change nobody has labelled. */
-const ALL_FIELDS = [...IDENTITY_FIELDS, ...FEATURE_FIELDS, ...FINANCIAL_FIELDS, ...MESSAGING_FIELDS, ...RETENTION_FIELDS, ...SWAP_FIELDS, ...SWAP_TOGGLE];
+
+/* ══════════════════════════════════════════════════════════════════════════
+   HOLIDAY HOURS. Matt asked for this screen on Aug 21 2026, after the whole
+   path underneath it had been ported and there was nowhere to type a number.
+
+   ⚠️ THE ENGINE ALREADY READS ALL OF THIS. `holidayPolicy.js` resolves a date,
+   `laborEngine.js` folds the figure into the forecast, and the Labor Planner
+   budgets from it. Until this screen existed those parts sat inert, because a
+   store had no way to say anything.
+
+   ⚠️⚠️ THE EXPECTED TAKE IS THE ONE THAT COSTS MONEY IF IT IS BLANK. A holiday
+   cannot be forecast off an ordinary weekday: Christmas Eve is a Thursday, and
+   without a figure here the planner budgets a full Thursday's hours on a day
+   that shuts early. Blank is still the honest default — a guessed number would
+   be another store's volume — but the note says what leaving it blank costs,
+   rather than leaving somebody to find out. */
+const HOLIDAY_FIELDS = [
+  { path: "holidays.open", label: "Holidays open at", kind: "time",
+    note: "The time most holidays open. Days that differ are set below." },
+  { path: "holidays.close", label: "Holidays close at", kind: "time",
+    note: "Every holiday this store opens on closes at this time unless a day below says otherwise." },
+  { path: "holidays.baseSales", label: "What a short holiday is expected to take", kind: "num",
+    note: "In dollars. A holiday cannot be forecast off an ordinary weekday, so the Labor Planner budgets from this until a real holiday has been traded and recorded. Leave it empty and holidays budget like a normal day, which is usually far too many hours." },
+];
+
+const ALL_FIELDS = [...IDENTITY_FIELDS, ...FEATURE_FIELDS, ...FINANCIAL_FIELDS, ...MESSAGING_FIELDS, ...RETENTION_FIELDS, ...SWAP_FIELDS, ...SWAP_TOGGLE, ...HOLIDAY_FIELDS];
 const HOUSE_LABEL = { FOH: "Front of house", BOH: "Back of house" };
 const labelFor = (path) => {
   const hit = ALL_FIELDS.find((f) => f.path === path);
@@ -764,6 +793,88 @@ export default function StoreSettings({ tier, user = {} }) {
             ))}
           </Section>
 
+          <Section title="7 · Holiday hours" wrap={wrap}>
+            <div style={noteStyle}>
+              The Hub already knows when the holidays fall. This is what this store does
+              about them. Set it once and no date needs typing again.
+            </div>
+            {HOLIDAY_FIELDS.map((f) => (
+              <Field key={f.path} f={f} lbl={lbl} inp={inp} noteStyle={noteStyle} value={valueOf(f.path)} onChange={edit} disabled={loadFailed} />
+            ))}
+
+            <div style={{ ...lbl, marginTop: 14 }}>Days that are different</div>
+            <div style={{ ...noteStyle, marginTop: 0, marginBottom: 8 }}>
+              Leave a day on <b>Holiday hours</b> and it uses the times above. <b>Normal day</b>
+              is a holiday this store trades like any other day. <b>Closed</b> is a day it shuts.
+              <b> Own time</b> opens at a time only that day uses.
+            </div>
+            {/* ⚠️⚠️ FOUR STATES, AND "NORMAL DAY" IS THE ONE THAT LOOKS REDUNDANT
+                AND IS NOT. Once a store sets holiday hours above, EVERY holiday
+                without a row of its own falls to them — including the ones it
+                trades normally. Black Friday is the example that costs the most:
+                a store open 6am to 9pm that day would be rostered to a short
+                holiday window, silently, with every check green. `normal` is how
+                a store says "a holiday by the calendar, an ordinary day here",
+                and it deliberately carries NO hours, so it stays true the next
+                time the store changes its ordinary ones.
+                ⚠️ EACH STATE REPLACES THE ROW RATHER THAN MERGING INTO IT. A
+                record holding both `closed` and an opening time is a record
+                somebody edited twice, and `readHolidayPolicy` has to pick one —
+                which is a rule living in two places. Writing the whole row means
+                the screen and the resolver cannot disagree.
+                ⚠️ `holidays.byKey` IS AN OPEN MAP IN storeConfig.js. Without
+                that, every row written here is silently dropped on the next
+                load, because mergeDeep only fills keys the defaults know. */}
+            {HOLIDAY_KEYS.map((k) => {
+              const row = valueOf(`holidays.byKey.${k}`) || {};
+              const mode = row.closed ? "closed" : row.normal ? "normal" : (row.open === null || row.open === undefined || row.open === "" ? "default" : "own");
+              const n = Number(row.open);
+              const asClock = Number.isFinite(n)
+                ? `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`
+                : "";
+              return (
+                <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "6px 0", borderTop: "1px solid #F1F3F5" }}>
+                  <span style={{ flex: "1 1 160px", fontSize: 13.5, fontWeight: 600, color: "#111827" }}>
+                    {HOLIDAY_NAMES[k]}
+                  </span>
+                  <select
+                    value={mode}
+                    disabled={loadFailed}
+                    style={{ ...inp, width: "auto", marginBottom: 0 }}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "closed") { edit(`holidays.byKey.${k}`, { closed: true }); return; }
+                      if (v === "normal") { edit(`holidays.byKey.${k}`, { normal: true }); return; }
+                      if (v === "own") { edit(`holidays.byKey.${k}`, { open: 630 }); return; }
+                      edit(`holidays.byKey.${k}`, {});
+                    }}
+                  >
+                    <option value="default">Holiday hours</option>
+                    <option value="normal">Normal day</option>
+                    <option value="closed">Closed</option>
+                    <option value="own">Own time</option>
+                  </select>
+                  {mode === "own" && (
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#6B7480" }}>
+                      Opens
+                      <input
+                        type="time" style={{ ...inp, maxWidth: 130, marginBottom: 0 }} value={asClock} disabled={loadFailed}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (!raw) { edit(`holidays.byKey.${k}`, {}); return; }
+                          const m = raw.match(/^(\d{1,2}):(\d{2})$/);
+                          if (!m) return;
+                          edit(`holidays.byKey.${k}`, { open: Number(m[1]) * 60 + Number(m[2]) });
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+              );
+            })}
+          </Section>
+
+
           {verdict.errors.length > 0 && (
             <div style={{ ...wrap, ...accentEdge(RED), background: "#FEF2F2" }}>
               <div style={{ fontWeight: 800, color: "#B91C1C", fontSize: 13.5 }}>Fix these before saving</div>
@@ -919,6 +1030,34 @@ function Field({ f, lbl, inp, noteStyle, value, onChange, disabled }) {
                would fall back to the code default, and for a store clearing
                somebody else's values that is the opposite of what they pressed. */
             onChange(f.path, raw.split(",").map((s) => s.trim()).filter(Boolean));
+          }}
+        />
+        {f.note && <div style={noteStyle}>{f.note}</div>}
+      </div>
+    );
+  }
+  /* ⚠️ MINUTES FROM MIDNIGHT IN THE RECORD, A CLOCK ON THE SCREEN. That unit is
+     `storeHours.js`'s and every reader of these values expects it; a "10:30"
+     string saved here would read as NaN the first time a holiday was resolved.
+     ⚠️ AN EMPTY BOX SAVES undefined, NOT 0. Midnight is a real opening time and
+     zero is what a store would get for clearing the field — the same call the
+     number box below already makes for the same reason. */
+  if (f.kind === "time") {
+    const n = value === null || value === undefined || value === "" ? null : Number(value);
+    const asClock = Number.isFinite(n)
+      ? `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`
+      : "";
+    return (
+      <div style={{ marginBottom: 11 }}>
+        <div style={lbl}>{f.label}</div>
+        <input
+          style={inp} type="time" value={asClock} disabled={disabled}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (!raw) { onChange(f.path, undefined); return; }
+            const m = raw.match(/^(\d{1,2}):(\d{2})$/);
+            if (!m) return;
+            onChange(f.path, Number(m[1]) * 60 + Number(m[2]));
           }}
         />
         {f.note && <div style={noteStyle}>{f.note}</div>}

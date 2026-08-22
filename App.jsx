@@ -119,6 +119,10 @@ const ScheduleConsole = lazy(() => import("./ScheduleConsole.jsx"));
    setting could arrive. Tool entries name their list with `allowIdsFrom` now
    and toolAllowsId resolves it at use time. */
 import { tileAllowIds, STORE, storeCfg, programLabel, tokenLabel } from "./storeConfig.js";
+/* The store's saved settings. Same loader main.jsx runs at boot, imported here
+   rather than copied so there is one fetch-and-merge in the app (design rule 8)
+   — and it lives in its own file because main.jsx imports THIS one. */
+import { loadStoreConfig } from "./storeConfigLoad.js";
 import { onSigned } from "./signedTick.js";
 import { loadItemGaps, priorMonthGaps } from "./foodItemGaps.js";
 import { eosPeriod } from "./eosPeriod.js";
@@ -508,6 +512,27 @@ const LEAD = "#3730A3"; // Leadership section accent (indigo — same blue famil
    there, and `tileGrid.test.mjs` fails on any tile grid that spells its own.
    ⚠️ The column COUNT does not change at this page width: 4 columns either way
    (4x240+3x12 = 1008, and 5 would need 1248). Only the rhythm was unified. */
+/* ⭐⭐ ONE PAGE WIDTH, NAMED ONCE.
+
+   Matt, Aug 19 2026, off a laptop screenshot: "I would like the side by side if
+   possible for the more compact look."
+
+   The page was capped at 860. The tile grid is `auto-fill minmax(240px, 1fr)`
+   with a 12px gap, so 860 fits exactly THREE columns and the rest of a laptop
+   screen was white — more rows than necessary, and more scrolling. At 1200 the
+   same grid fits FOUR.
+
+   ⚠️⚠️ THE FAILURE THIS GUARDS IS NOT THE NUMBER, IT IS THE PAIR. The header and
+   the page body are two separate `maxWidth` declarations wrapping two separate
+   blocks, and if they drift the store name stops lining up with the content
+   under it — a misalignment that looks like a rendering bug and shows in no
+   diff. `pageWidth.test.mjs` fails if they ever disagree, which is why this is a
+   named constant rather than 1200 typed twice.
+
+   ⚠️ IT IS A CAP, NOT A WIDTH. Nothing is stretched; a narrow window is
+   unaffected. */
+const PAGE_MAX = 1200;
+
 const TILE_GRID = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 };
 
 const INK = "#13293F";
@@ -666,6 +691,39 @@ const KPI_ROWS = [
   { id: "s6", label: "Evals on-time", fmt: (v) => `${Math.round(v)}%`, dest: "hr", basis: "right now" },
   { id: "s8", label: "Cash", fmt: (v) => `$${Math.abs(Math.round(v))}`, dest: "cashaudit" },
 ];
+/* ⭐ A GLYPH PER METRIC. Matt, Aug 20 2026: "for the key metrics I'd like some
+   glyphs in each box. It's a lot of white so I think that can definitely
+   improve."
+
+   ⚠️⚠️ IT SITS IN THE WHITE, IT DOES NOT COMPETE WITH THE NUMBER. The label is
+   top-left and the figure under it, so the empty half of every cell is the top
+   RIGHT. The glyph goes there, in the cell's own tone at low opacity, large
+   enough to fill the space and faint enough that a director still reads 29.40%
+   first. A solid icon in a tinted chip would have made six new focal points on
+   a strip whose whole job is six numbers.
+
+   ⚠️ ITS OWN MAP, NOT THE TOOL ICON MAP. `Icon` is keyed by TOOL id and its own
+   comment records what an unmapped id costs — a tile-shaped hole that reads as
+   a screen still loading. A KPI is not a tool, and borrowing that map would
+   have put six non-tool keys into the thing that guards tools.
+
+   ⚠️ EVERY ROW HAS ONE, AND A MISSING ONE DRAWS NOTHING RATHER THAN A BOX.
+   `kpiGrid.test.mjs` fails if a KPI row has no glyph. */
+const KPI_GLYPH = {
+  /* Sales: a line going up. */
+  s1: <><path d="M3 17l6-6 4 4 8-8" /><path d="M17 7h4v4" /></>,
+  /* Food: a plate with cutlery. */
+  s2: <><path d="M4 3v7a2 2 0 0 0 2 2 2 2 0 0 0 2-2V3" /><path d="M6 12v9" /><path d="M17 3c-1.7 1.2-2.5 3-2.5 5.5 0 1.9.8 3 2.5 3.5" /><path d="M17 3v18" /></>,
+  /* Labor: a person and a clock, which is what labor cost is made of. */
+  s3: <><path d="M9 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" /><path d="M2 21v-2a5 5 0 0 1 5-5h3" /><circle cx="17" cy="16" r="5" /><path d="M17 14v2l1.5 1" /></>,
+  /* Turnover: somebody walking out of a door. */
+  s5: <><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" /><path d="M10 17l5-5-5-5" /><path d="M15 12H3" /></>,
+  /* Evals on-time: a clipboard with a tick. */
+  s6: <><path d="M9 3h6v3H9z" /><path d="M15 4.5h2A2 2 0 0 1 19 6.5V20a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2h2" /><path d="M9 14l2 2 4-4" /></>,
+  /* Cash: a note. */
+  s8: <><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /><path d="M6 12h.01M18 12h.01" /></>,
+};
+
 
 // ── Company Health ring ───────────────────────────────────────────
 // A single glance number for directors: of the store metrics that ARE
@@ -1537,6 +1595,27 @@ const toolById = (id) => {
 };
 const colorFor = (tool) =>
   tool.color || SECTIONS.find((s) => s.tools.some((t) => t.id === tool.id))?.color || INK;
+/* ⭐⭐ SIGNING IN WITHOUT PICKING A TOOL. Matt, twice: "I still want to log in
+   without going into a tool."
+
+   ⛔ `openTool` IS THE ONLY DOOR TO THE PIN CARD, and it takes a tool. So the
+   whole sign-in flow was: tap something you may not even want, get refused,
+   type your PIN, land INSIDE that tool, and back out to reach the dashboard.
+   The signed-out header offered nothing at all.
+
+   ⇒ A tool-shaped sentinel, so the card it opens is the same card rather than a
+   second one that drifts. It is never registered in SECTIONS, never rendered as
+   a tile, and never becomes `activeTool` — `grant` drops it, which is what
+   lands somebody on the dashboard instead of in a screen.
+
+   ⚠️⚠️ IT MUST NOT GO THROUGH `canUseTool`, AND THAT IS NOT A SHORTCUT. That
+   function short-circuits on `onlyFor(person)` and answers `only.has(tool.id)`
+   — so for anybody with a narrowed view (Nick's reduced Hub is the live
+   example) an unregistered id answers FALSE, and the one person most likely to
+   be confused by the old flow could not sign in at all. Signing in is not a
+   tool grant; it is the thing that HAPPENS BEFORE one. */
+const SIGN_IN_TOOL = { id: "__signin", name: "Sign in", tier: 1, color: INK };
+const isSignIn = (t) => !!t && t.id === SIGN_IN_TOOL.id;
 
 // ── Daily-checklist helpers ──────────────────────────────────────
 const pad2 = (v) => String(v).padStart(2, "0");
@@ -1990,6 +2069,12 @@ export default function App() {
   // Dashboard daypart breakdown, collapsed by default — see the Labor card.
   const [dashDayparts, setDashDayparts] = useState(false);
   const [pinTool, setPinTool] = useState(null); // tool awaiting PIN
+  /* ★ BUMPED WHEN A STORE'S SAVED SETTINGS ARRIVE AFTER SIGN-IN, and read by
+     nothing. Its only job is to make React render again: `applyStoreOverrides`
+     merges into module state that React cannot see, so without this the config
+     would be correct and the screen would still be showing the defaults. See
+     `grant` below and storeConfigLoad.js. */
+  const [cfgTick, setCfgTick] = useState(0);
   const [pin, setPin] = useState("");
   const [pinErr, setPinErr] = useState("");
   const [rememberDevice, setRememberDevice] = useState(false); // "keep me signed in on this device" — OFF by default so shared iPads stay at 12h
@@ -3300,8 +3385,34 @@ export default function App() {
       setUser(person);
       localStorage.setItem(USER_KEY, JSON.stringify(person));
     }
-    setActiveTool(pinTool);
+    /* ⚠️ THE SENTINEL IS NOT A SCREEN. Opening it would put an unregistered id
+       through the tile chrome, and `Icon` renders an unmapped id as an empty
+       square — a tile-shaped hole that reads as a screen still loading. Null
+       lands on the dashboard, which is the whole point of the button. */
+    setActiveTool(isSignIn(pinTool) ? null : pinTool);
     setPinTool(null);
+    /* ★★ THE STORE'S OWN SETTINGS, IF THE BOOT CALL NEVER GOT THEM.
+       🐛 Opening the Hub with a lapsed session made main.jsx's loader bail on
+       the missing token, and nothing ever tried again — so the whole session
+       ran on the ORIGIN STORE'S code defaults. Signing in is exactly the moment
+       a token starts existing, so it is the moment to ask again.
+
+       ⚠️ NOT AWAITED, ON PURPOSE. Nobody waits after typing a PIN. Access is
+       granted on the lines above and the settings catch up a moment later;
+       making this block the grant would put a network round trip between a
+       leader and the board they just unlocked, which is the trade main.jsx
+       already refused at boot.
+
+       ⚠️ IT COSTS NOTHING IN THE NORMAL CASE. `loadStoreConfig` returns
+       immediately once a boot apply has succeeded, so this only does real work
+       in the case that was broken.
+
+       ⚠️ THE TICK IS THE POINT. `applyStoreOverrides` merges into module state
+       React cannot see, so without a state change the config would be right and
+       the screen would still show the defaults — which is the bug, one step
+       later. Only a REAL apply resolves true, so a failed fetch renders
+       nothing extra. */
+    loadStoreConfig().then((didApply) => { if (didApply) setCfgTick((n) => n + 1); });
   };
 
   const submitPin = async () => {
@@ -3444,7 +3555,7 @@ export default function App() {
         const m = matches[0];
         const role = effectiveRole(m.id, rm[m.id] || m.role);
         const t = roleTier(role);
-        if (canUseTool(pinTool, t, { id: m.id, role })) {
+        if (isSignIn(pinTool) || canUseTool(pinTool, t, { id: m.id, role })) {
           // slackId is passed through so TeamDirectory (and anything else
           // gating on identity) can key off the Slack user ID rather than a
           // display-name string. Null until the HR roster carries the field.
@@ -4467,7 +4578,7 @@ export default function App() {
         </div>
       )}
       <div style={{ position: "relative", zIndex: 1, background: INKGRAD, color: "#fff", padding: "46px 20px 18px", borderBottom: `3px solid ${RED}` }}>
-        <div style={{ maxWidth: 860, margin: "0 auto", display: "flex", flexWrap: "wrap", alignItems: "flex-end", justifyContent: "space-between", gap: 12, rowGap: 10 }}>
+        <div style={{ maxWidth: PAGE_MAX, margin: "0 auto", display: "flex", flexWrap: "wrap", alignItems: "flex-end", justifyContent: "space-between", gap: 12, rowGap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
             <PeakReachersBadge size={42} />
             <div style={{ minWidth: 0 }}>
@@ -4479,6 +4590,31 @@ export default function App() {
               </div>
             </div>
           </div>
+          {/* ⭐⭐ THE WAY IN, ON THE SCREEN SOMEBODY LANDS ON. Matt, twice:
+              "I still want to log in without going into a tool."
+
+              🐛 THE SIGNED-OUT HEADER HAD NOTHING ON IT AT ALL. Every control
+              here sits behind `signedIn`, so a person opening the Hub saw the
+              store name and a list of sections and no way to identify
+              themselves. The only door was to tap a tool, be refused, type a
+              PIN, and land inside a tool they may not have wanted — then back
+              out to reach the dashboard.
+
+              ⚠️ IT OPENS THE SAME CARD, not a second one. A separate sign-in
+              screen is two places to keep the name step, the ambiguous-PIN
+              message and the lockout copy in step, and they would drift. */}
+          {!signedIn && (
+            <button
+              onClick={() => { setPin(""); setPinErr(""); setNeedName(false); setPinNameId(""); setNameChoices([]); setNameQuery(""); setPinTool(SIGN_IN_TOOL); }}
+              style={{
+                background: "rgba(255,255,255,0.16)", border: "1px solid rgba(255,255,255,0.32)",
+                color: "#fff", borderRadius: 999, padding: "7px 16px",
+                fontSize: 13, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap",
+              }}
+            >
+              Sign in
+            </button>
+          )}
           {signedIn && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             {/* ★ BRI'S CALENDAR ICON, by the sign-in name. Opens the Calendar
@@ -4552,7 +4688,7 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 860, margin: "0 auto", padding: "16px 14px 0", position: "relative", zIndex: 1 }}>
+      <div style={{ maxWidth: PAGE_MAX, margin: "0 auto", padding: "16px 14px 0", position: "relative", zIndex: 1 }}>
 
         {/* ── Search ──────────────────────────────────────────────── */}
         {!openSection && signedIn && (
@@ -4737,8 +4873,25 @@ export default function App() {
                       borderTop: `3px solid ${tone}`, borderLeft: `3px solid ${tone}`,
                       borderRadius: 12,
                       padding: "9px 12px 10px 9px", boxShadow: CARD_3D,
+                      /* ⚠️ RELATIVE, SO THE GLYPH CAN SIT IN THE EMPTY HALF.
+                         `overflow: hidden` keeps a glyph that overhangs the
+                         rounded corner inside it rather than square against it. */
+                      position: "relative", overflow: "hidden",
                     }}
                   >
+                    {/* ⭐ THE GLYPH. Top right, in the cell's own tone, faint.
+                        `aria-hidden` because it says nothing the label does not
+                        already say out loud, and a screen reader announcing
+                        "image" before every number would be noise. */}
+                    {KPI_GLYPH[row.id] && (
+                      <svg
+                        aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none"
+                        stroke={tone} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+                        style={{ position: "absolute", top: 6, right: 6, opacity: hasVal ? 0.16 : 0.10, pointerEvents: "none" }}
+                      >
+                        {KPI_GLYPH[row.id]}
+                      </svg>
+                    )}
                     <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.03em", color: "#6B7280", whiteSpace: "nowrap" }}>{row.label}</div>
                     <div style={{ fontSize: 19, fontWeight: 900, color: tone, marginTop: 3, whiteSpace: "nowrap" }}>{hasVal ? val : "—"}</div>
                     <div style={{ fontSize: 10.5, fontWeight: 700, color: "#9CA3AF", marginTop: 2, whiteSpace: "nowrap", minHeight: 13 }}>
@@ -5843,7 +5996,53 @@ export default function App() {
                           {g.items.map((r, i) => Row(r, `${g.label}-${r.id}-${i}`))}
                         </div>
                       ))
-                    : allInputs.filter((r) => r.state !== "open").map((r, i) => Row(r, `${r.id}-${i}`))}
+                    : (() => {
+                        /* ⛔⛔ A BAND IS A HEADING, NOT A DIVIDER. IT MUST NAME
+                           WHAT FOLLOWS IT.
+
+                           Matt, Aug 21 2026, off his own dashboard. The "Open
+                           lists" band above sits over ONE open list. In THIS
+                           view every ordinary input then followed it with no
+                           band of its own, so Daily sales, Labor hours and
+                           Daily food cost were stacked under a heading reading
+                           OPEN LISTS and read as open lists.
+
+                           ⚠️ THE OTHER THREE VIEWS WERE NEVER WRONG, and that is
+                           why this went unseen. Cadence, area and owner each
+                           head every group they draw, so the open-lists band is
+                           always closed off by the next heading. Only the
+                           default view left it orphaned, and the default view
+                           is the one everybody lands on.
+
+                           ⚠️ THE COUNT IS OF THE ROWS THIS BAND HEADS, never of
+                           the panel. That is what the other three bands do, and
+                           for anybody who is not an overseer the two numbers
+                           genuinely differ: the header counts THEIR inputs, the
+                           list draws the whole board. A band that borrowed the
+                           header's figure would print a number that does not
+                           match what is under it. */
+                        const rest = allInputs.filter((r) => r.state !== "open");
+                        if (!rest.length) return null;   // an empty heading teaches people to skim
+                        const late = rest.filter((r) => r.state === "late").length;
+                        const off  = rest.filter((r) => r.state === "offgoal").length;
+                        const untr = rest.filter((r) => r.state === "untracked").length;
+                        return (
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px 5px", borderTop: "1px solid #F1F3F5", background: "#FAFBFC" }}>
+                              <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em", color: PEAK, textTransform: "uppercase" }}>
+                                {myOpenLists.length ? "Everything else" : "All inputs"}
+                              </span>
+                              <span style={{ fontSize: 11.5, color: "#6B7480" }}>
+                                {rest.length - untr} input{rest.length - untr === 1 ? "" : "s"}
+                                {off ? ` · ${off} off goal` : ""}
+                                {late ? ` · ${late} need${late === 1 ? "s" : ""} you` : ""}
+                                {untr ? ` · ${untr} not tracked` : ""}
+                              </span>
+                            </div>
+                            {rest.map((r, i) => Row(r, `${r.id}-${i}`))}
+                          </div>
+                        );
+                      })()}
                 </div>
               )}
             </div>
@@ -6534,19 +6733,31 @@ export default function App() {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span
-                style={{
-                  width: 40, height: 40, borderRadius: 10,
-                  background: `${colorFor(pinTool)}14`,
-                  display: "inline-flex", alignItems: "center", justifyContent: "center",
-                }}
-              >
-                <Icon id={pinTool.id} color={colorFor(pinTool)} />
-              </span>
+              {/* ⚠️ NO ICON FOR THE SENTINEL. `Icon` is keyed by tool id and its
+                  own note records what an unmapped one costs: an empty square
+                  that reads as something still loading. */}
+              {!isSignIn(pinTool) && (
+                <span
+                  style={{
+                    width: 40, height: 40, borderRadius: 10,
+                    background: `${colorFor(pinTool)}14`,
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  }}
+                >
+                  <Icon id={pinTool.id} color={colorFor(pinTool)} />
+                </span>
+              )}
               <div>
-                <div style={{ fontSize: 15.5, fontWeight: 800, color: INK }}>{pinTool.name}</div>
+                <div style={{ fontSize: 15.5, fontWeight: 800, color: INK }}>
+                  {isSignIn(pinTool) ? "Sign in" : pinTool.name}
+                </div>
                 <div style={{ fontSize: 12, color: "#6B7280" }}>
-                  Requires {TIER_NAMES[pinTool.tier]} access.
+                  {/* ⚠️ "Requires Director access" ON A PLAIN SIGN-IN IS A LIE,
+                      and a discouraging one: this card takes anybody's PIN and
+                      gives them whatever their own access is. */}
+                  {isSignIn(pinTool)
+                    ? "Type your PIN. You will land on your dashboard."
+                    : `Requires ${TIER_NAMES[pinTool.tier]} access.`}
                 </div>
               </div>
             </div>

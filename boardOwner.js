@@ -590,6 +590,21 @@ export function ownersForInput(inputId, shift) {
  * Compute it ONCE per job or per render and pass the Set down; it is not free
  * and isOwner is called per person per row.
  */
+/* ⚠️⚠️ THERE IS A SECOND, STRICTER RULE OF THIS NAME IN `boardSwap.js`, AND
+   THAT IS DELIBERATE. Do not merge them. They answer different questions with
+   OPPOSITE safe directions:
+     · this one decides who gets a NOTIFICATION, where the failure is SILENCE,
+       so it is permissive and absorbs a bare form into an initialled one;
+     · boardSwap's decides whether to REWRITE A NAME IN A BOX ON A PRINTED
+       BOARD, where the failure is the WRONG NAME, so it refuses the same case.
+   The two inputs are indistinguishable from the strings alone. This roster
+   carries BOTH shapes at once: a first name that also appears with an initial
+   and is ONE person, and a first name that also appears with a full surname and
+   is TWO people. Nothing reading only those strings can separate them, so no
+   single rule can serve both callers.
+   ⇒ `sharedFirstNames.test.mjs` runs BOTH and guards the RELATIONSHIP: the
+   board rewriter must never be more permissive than this one. A sweep reported
+   the pair as drift and recommended merging; that file records why not. */
 export function sharedFirstNames(roster) {
   /* ⚠️ COUNTS PEOPLE, NOT ENTRIES, AND THAT IS NOT THE SAME THING. One leader
      fills several slots — the money pool alone is money + opener + closer, and

@@ -41,7 +41,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { kvGet, kvSet, kvGetResult } from "./store";
 /* The shared raised look — see cardStyle.js. */
-import { importZone, CARD_3D, CARD_3D_SOFT, cardSurface, accentEdge } from "./cardStyle.js";
+import { importZone, CARD_3D, CARD_3D_SOFT, cardSurface, accentEdge, notePanel } from "./cardStyle.js";
+import ImportFileZone from "./ImportFileZone.jsx";
 import MonthYearPicker from "./MonthYearPicker.jsx";
 import CalendarGrid from "./CalendarGrid.jsx";
 /* ★ THE SALES LOADERS LIVE IN laborEngine.js NOW (Aug 6 2026). The worker's
@@ -395,7 +396,7 @@ export default function SalesAllocation() {
   return (
     <div style={S.page}>
       {!loadOk && (
-        <div style={{ background: "#F5EAD3", border: "1px solid #E4CE9E", borderLeft: "3px solid #A9741C", borderTop: "3px solid #A9741C", borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 13, fontWeight: 700, color: "#7A5410" }}>
+        <div style={{ ...notePanel("#A9741C", "#E4CE9E", "#F5EAD3"), borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 13, fontWeight: 700, color: "#7A5410" }}>
           This month's sales could not be reached — the grid below is blank, not real, and entry is off so it cannot overwrite the real month. Reopen the tile to retry.
         </div>
       )}
@@ -467,7 +468,7 @@ export default function SalesAllocation() {
           </div>
 
           {sel.hol && (
-            <div style={{ backgroundColor: "#FFF4E5", backgroundImage: cardSurface(HOL, 0.4), border: "1px solid #F5D9AE", ...accentEdge(HOL, 3), boxShadow: CARD_3D_SOFT, borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
+            <div style={{ ...notePanel(HOL, "#F5D9AE", "#FFF4E5"), borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
               <div style={{ fontSize: 12.5, color: HOL, fontWeight: 700, marginBottom: 6 }}>
                 Holiday — excluded from Thaw &amp; Planner averages. Real sales below still count toward month totals, food cost, and FCR.
               </div>
@@ -568,11 +569,13 @@ export default function SalesAllocation() {
                 dont stand out with color"). Same blue dashed zone as every other
                 paste box in the Hub, so one is recognisable wherever you meet
                 it. minHeight is kept — this one takes a whole month of rows. */}
-            <textarea
-              style={{ ...importZone(), minHeight: 120 }}
-              value={importText} onChange={(e) => setImportText(e.target.value)}
-              placeholder={`${ym}-01, 20138.42, 4210, 4035, 3694, 335`}
-            />
+            <ImportFileZone onText={(t) => setImportText(t)}>
+              <textarea
+                style={{ ...importZone(), minHeight: 120 }}
+                value={importText} onChange={(e) => setImportText(e.target.value)}
+                placeholder={`${ym}-01, 20138.42, 4210, 4035, 3694, 335`}
+              />
+            </ImportFileZone>
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
               <button style={S.btn("#166B4A")} onClick={runImport}>Import</button>
               <button style={S.btn(GRAY)} onClick={() => { setShowImport(false); setImportText(""); }}>Cancel</button>

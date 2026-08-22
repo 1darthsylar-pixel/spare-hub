@@ -3,8 +3,8 @@ import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
 import UpdateBar from "./UpdateBar.jsx";
 import "./index.css";
-import { kvGet, kvGetResult, kvSet, hubToken } from "./store";
-import { applyStoreOverrides } from "./storeConfig.js";
+import { kvGet, kvGetResult, kvSet } from "./store";
+import { loadStoreConfig } from "./storeConfigLoad.js";
 
 // Redirect the artifact-style window.storage API to the shared store,
 // so tools written against window.storage persist for the whole team.
@@ -41,49 +41,23 @@ if (typeof window !== "undefined" && !window.storage) {
    over the code defaults, so every screen renders with the store's own name,
    goals and switches rather than Gate City's.
 
-   ⚠️ IT NEVER BLOCKS THE APP. Not on a failed fetch, not on a 401, not on a
-   slow network, not on a bad shape. Every one of those falls through to the
-   code defaults and the Hub opens exactly as it does today. A settings read is
-   a nicety; a leader standing at the board mid-rush is not going to wait for it
-   and must never be shown a blank screen because of it.
-
    ⚠️ IT RUNS BEFORE render(), AND THAT IS THE WHOLE POINT. The reads inside the
    app go through storeCfg() at use time now, so a late apply would still be
    picked up on the next render — but a value applied AFTER first paint means
    the store's own name flashes as "Gate City" first. Awaiting it here costs one
    request against a Worker route and removes that flash.
 
-   ⚠️ SIGNED OUT MEANS DEFAULTS, AND THAT IS CORRECT. The route needs a session
-   token, so the sign-in screen renders on the code defaults. Nothing on it
-   depends on a store's settings, and re-applying after sign-in is a later
-   refinement rather than a gap — the app re-renders on sign-in anyway. */
-/* ⚠️⚠️ THE TIMEOUT IS THE LOAD-BEARING PART, NOT THE try/catch. A try/catch
-   handles a fetch that FAILS. It does nothing for one that HANGS — and a hung
-   request here means render() is never reached and the Hub is a white screen,
-   which is far worse than the stale-name flash this whole function exists to
-   avoid. Store wifi drops mid-request often enough that this is a when, not an
-   if. Two and a half seconds, then give up and open on the defaults. */
-const BOOT_CONFIG_TIMEOUT_MS = 2500;
+   ⚠️⚠️ SIGNED OUT USED TO MEAN DEFAULTS FOREVER, AND THAT WAS A BUG (fixed
+   Aug 15 2026). This paragraph used to say re-applying after sign-in was "a
+   later refinement rather than a gap — the app re-renders on sign-in anyway".
+   Re-rendering reads LIVE, and when this call bails on a missing token LIVE was
+   never populated, so every render after sign-in was just as wrong as the
+   first. The whole session ran on Gate City's settings.
+   ⇒ `App.jsx` calls `loadStoreConfig` again the moment a PIN is accepted. The
+   `applied` flag in that module makes this call the only one that does any work
+   in the ordinary case. See storeConfigLoad.js for the full story. */
 
-async function bootStoreConfig() {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), BOOT_CONFIG_TIMEOUT_MS);
-  try {
-    const token = hubToken();
-    if (!token) return;
-    const res = await fetch("/api/store-config", { headers: { "x-hub-token": token }, signal: ctrl.signal });
-    if (!res.ok) return;
-    const body = await res.json();
-    if (body && body.ok) applyStoreOverrides(body.settings);
-  } catch {
-    /* Deliberately silent, and that covers the abort too. See the note above:
-       the defaults are a working Hub. */
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-bootStoreConfig().finally(() => {
+loadStoreConfig().finally(() => {
   createRoot(document.getElementById("root")).render(
     <React.StrictMode>
       <App />

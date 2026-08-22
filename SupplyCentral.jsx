@@ -35,9 +35,25 @@ const SIGNOUT_CAP = 500;                 // keep the newest N entries so the KV 
 const ORDERS_KEY = "gcfcr-orders-v1";
 const ORDERS_CAP = 500;                  // same reason as SIGNOUT_CAP
 
-// Slack channel the order gets posted to on submit (resolved by name via
-// the Worker's /api/slack-notify route — no channel ID needed here).
-const ORDER_SLACK_CHANNEL = "operational-success";
+/* WHERE THE ORDER GETS POSTED. A PURPOSE, NOT A CHANNEL — the Worker resolves
+   it out of the store's `messaging` config on /api/slack-notify.
+
+   🐛 THIS WAS `"operational-success"` AND IT HAD STOPPED WORKING. Matt, Aug 21
+   2026: "we dont have ops success anymore. we only have the peak reachers and
+   general channels." Once the store moved its channels into config, that
+   literal matched nothing the route allows, so every submitted order came back
+   403 while this page still said the order had been sent.
+
+   ⚠️ A CHANNEL NAME IN A BROWSER FILE CANNOT BE FIXED FROM THE SETTINGS SCREEN,
+   and a clone would carry Gate City's rooms into another store's Slack. Naming
+   the purpose is what makes both of those go away.
+
+   ⚠️ AND THE NAME WAS ON THE BUTTON. "Submit Order to #operational-success" is
+   what a leader read every time, which is why this had to be four edits and
+   not one — the constant was doing double duty as routing AND as copy, so the
+   room the order went to and the room the page promised could never disagree
+   until the routing moved and the copy did not. */
+const ORDER_SLACK_PURPOSE = "inventory";
 
 const CAT_ORDER = [
   "Boards Assembly","Breakfast Utensils","Catering","Coffee Brewers",
@@ -660,10 +676,17 @@ async function postOrderToSlack(items, getQty, who) {
     const res = await fetch("/api/slack-notify", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-hub-token": hubToken() },
-      body: JSON.stringify({ channel: ORDER_SLACK_CHANNEL, text }),
+      /* ⚠️ THE HUB COPY IS THE DELIVERY, THE SLACK POST IS THE COPY. With the
+         Inventory channel switched off this order used to reach nobody at all;
+         the announcement is what makes it exist outside this tile. */
+      body: JSON.stringify({ into: ORDER_SLACK_PURPOSE, text, announce: { title: "Supply order placed" } }),
     });
     const data = await res.json();
-    return { ok: res.ok && data.ok, error: data.error };
+    /* ⚠️ `sent: false` IS A SUCCESS. The store switched its Inventory channel
+       off, so the route declined on purpose and says so. Carrying that flag up
+       is what lets the confirmation stop claiming a Slack post that the store
+       has asked not to happen. */
+    return { ok: res.ok && data.ok, sent: data.sent !== false, announced: data.announced === true, error: data.error };
   } catch (e) {
     return { ok: false, error: String(e) };
   }
@@ -1073,7 +1096,7 @@ export default function SupplyCentral({ user = {} }) {
     }));
     const units = snapshot.reduce((n, i) => n + i.qty, 0);
 
-    const { ok, error } = await postOrderToSlack(allItems, getQty, orderedBy);
+    const { ok, sent, announced, error } = await postOrderToSlack(allItems, getQty, orderedBy);
     setSubmitting(false);
 
     if (!ok) {
@@ -1102,7 +1125,20 @@ export default function SupplyCentral({ user = {} }) {
     clearOrder();
     setSubmitMsg(
       wrote
-        ? { ok: true, text: `Order sent to #${ORDER_SLACK_CHANNEL} and filed under History` }
+        /* ⚠️ NO CHANNEL NAME HERE ANY MORE. This page no longer knows which
+           room the order lands in, and guessing one back at the leader is how
+           "Order sent to #operational-success" kept being shown for a channel
+           that had not existed for weeks. */
+        /* ⚠️ WHAT ACTUALLY HAPPENED, NOT WHAT USUALLY HAPPENS. A store that
+           has switched its Inventory channel off gets an order filed and no
+           Slack post, and saying "sent to Slack" there is the same class of
+           lie as the old "#operational-success" line — a page telling a leader
+           about a room it did not reach. */
+        ? sent
+          ? { ok: true, text: "Order sent to Slack and filed under History" }
+          : { ok: true, text: announced
+              ? "Order posted to the Hub and filed under History. Slack is switched off for Inventory."
+              : "Order filed under History. Slack is switched off for Inventory, and the Hub copy did not save." }
         /* Say it plainly rather than showing a tick. The order DID go out, so
            "failed" would be wrong, but it is not in History and re-sending it
            would order everything twice. */
@@ -1426,7 +1462,7 @@ export default function SupplyCentral({ user = {} }) {
                 </div>
               </div>
 
-              {/* Submit order → Slack #operational-success */}
+              {/* Submit order → Slack, room chosen by the Worker from config */}
               {submitMsg && (
                 <div className={`mt-4 rounded-xl px-4 py-3 text-sm font-semibold text-center ${submitMsg.ok ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
                   {submitMsg.text}
@@ -1436,7 +1472,7 @@ export default function SupplyCentral({ user = {} }) {
                 className={`w-full mt-4 rounded-2xl py-3.5 text-sm font-bold shadow-sm transition-colors ${
                   submitting ? "bg-gray-200 text-gray-500" : "bg-red-700 text-white active:bg-red-800"
                 }`}>
-                {submitting ? "Sending…" : `Submit Order to #${ORDER_SLACK_CHANNEL}`}
+                {submitting ? "Sending…" : "Submit Order"}
               </button>
               <div className="text-xs text-gray-400 text-center mt-2">
                 Posts the full order list to Slack, then clears your cart.
