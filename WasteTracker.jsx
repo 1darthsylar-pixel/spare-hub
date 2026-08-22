@@ -11,6 +11,7 @@ import {
    copy; the DM that chases a missing shift reads the same list the tile does. */
 import { WASTE_PERIODS } from "./wasteInputCheck.js";
 import { STORE } from "./storeConfig.js"; // store name on the donation record
+import { CHANNELS } from "./notify.js";  // the store's own channel names, read late
 
 // ════════════════════════════════════════════════════════════════
 // STORE CONFIG — the only block another location needs to touch.
@@ -561,13 +562,23 @@ export default function WasteTracker() {
       return "fail";
     }
 
+    /* 🐛 THE CHANNEL WAS HARDCODED HERE AND IT WAS THE ORIGIN STORE'S, so a
+       clone posted its waste log into another store's Slack — and the toast
+       said so by name, which made it read as working. Ported from the Village,
+       which already had this; rule 18, a store's own channel is data.
+       ⚠️ BLANK IS A REAL ANSWER. A store with no Slack has no channel set. The
+       log is already saved by the time we get here, so the honest report is
+       that it saved, not that a post failed and not that one happened. */
+    const channel = String(CHANNELS.inventory || "").trim();
+    if (!channel) { showToast("Logged"); return "ok"; }
+
     try {
       const res = await fetch("/api/slack-notify", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-hub-token": hubToken() },
-        body: JSON.stringify({ channel: "inventory-management", text }),
+        body: JSON.stringify({ channel, text }),
       });
-      if (res.ok) { showToast("Posted to #inventory-management"); return "ok"; }
+      if (res.ok) { showToast(`Posted to #${channel}`); return "ok"; }
       showToast("Slack post failed"); return "fail";
     } catch {
       showToast("Slack post failed"); return "fail";
