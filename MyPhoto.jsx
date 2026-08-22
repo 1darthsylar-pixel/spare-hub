@@ -44,7 +44,12 @@ const norm = (s) => String(s || "").toLowerCase().normalize("NFD")
 const MAX_BYTES = 5 * 1024 * 1024;
 
 export default function MyPhoto({ user }) {
-  const [mine, setMine] = useState("");        // signed handle for my own upload
+  /* null = not checked yet, exactly as `slack` below. It started at `""`,
+     which reads as "no photo of your own", so between the two reads settling
+     the card FLASHED onto the dashboard of somebody who already had one and
+     then vanished. This file's own note about `slack` says why that is not
+     acceptable: it looks broken. */
+  const [mine, setMine] = useState(null);      // signed handle for my own upload
   /* null = not checked yet. Until we know, nothing renders — briefly prompting
      someone who already has a Slack photo and then vanishing looks broken. */
   const [slack, setSlack] = useState(null);
@@ -54,13 +59,17 @@ export default function MyPhoto({ user }) {
   const key = norm(user && user.name);
 
   const load = async () => {
-    if (!key) return;
+    if (!key) { setMine(""); return; }
+    /* ⚠️ EVERY EXIT SETTLES IT, AND IT SETTLES TOWARDS SHOWING THE CARD. An
+       unknown answer left here would hide the invitation forever from exactly
+       the people it exists for, and nothing on screen would say so. A dropped
+       read is not a photo. */
     try {
       const r = await fetch("/api/hub-photos", { headers: { "x-hub-token": readToken() }, cache: "no-store" });
-      if (!r.ok) return;
+      if (!r.ok) { setMine(""); return; }
       const d = await r.json();
-      if (d && d.ok && d.byName) setMine(d.byName[key] || "");
-    } catch { /* no photo shown, no error shouted */ }
+      setMine((d && d.ok && d.byName && d.byName[key]) || "");
+    } catch { setMine(""); /* no photo shown, no error shouted */ }
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [key]);
@@ -128,7 +137,7 @@ export default function MyPhoto({ user }) {
      nothing for them — so they are not asked. It disappears by itself the
      moment a photo lands. */
   if (!user || !user.name) return null;
-  if (slack === null) return null;
+  if (slack === null || mine === null) return null;   // neither answer is in yet
   if (slack || mine) return null;
 
   return (

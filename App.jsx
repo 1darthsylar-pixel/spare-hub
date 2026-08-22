@@ -1295,7 +1295,7 @@ const SECTIONS = [
          FinancialSuite. The `desc` still says "profit share" for the people who
          do get it. */
       { id: "financials", name: "Financials", desc: "Sales, labor, food cost, FCR & profit share", tier: 3, allow: ["Payroll", "Director"], Component: FinancialSuite },
-      { id: "scorecard", color: "#13293F", name: "Business Scorecard", desc: "Track goals across all six pillars", tier: 3, allow: ["Director"], Component: BusinessScorecard },
+      { id: "scorecard", color: "#1E3A8A", name: "Business Scorecard", desc: "Track goals across all six pillars", tier: 3, allow: ["Director"], Component: BusinessScorecard },
       // tier 3 → 2 (Jul 27): shift leaders read guest feedback beside their own
       // scoreboard. Editing stays with directors — enforced INSIDE the component
       // via its `tier` prop, not by this registration. Ship both files together:
