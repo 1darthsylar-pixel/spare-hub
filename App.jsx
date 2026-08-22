@@ -5712,405 +5712,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ── Input health ────────────────────────────────────────
-              The full register behind the Today block. Today shows what needs
-              doing; this shows everything that is tracked, what it is not
-              tracking, and — for the Executive Director seat — who owns what.
-
-              Renders nothing for a person who owns no inputs. An empty panel
-              is worse than no panel: it teaches people the thing is irrelevant
-              to them, and then they stop reading the one that isn't. */}
-        {!openSection && !searching && user && myInputs.length > 0 && (() => {
-          // NO "N need you" HERE. It duplicated the Today block sitting directly
-          // above — same rows, same count, two cards apart. This line describes
-          // SCOPE (how much is watched); Today describes urgency.
-          const openN  = myOpenLists.length;
-          const untrN  = myInputs.filter((r) => r.state === "untracked").length;
-          const trackN = myInputs.length - untrN - openN;
-          const overseer = isOverseer(user);
-          /* "offgoal" = the input IS entered and on time, but the number misses
-             its target. Its own colour and word on purpose: green would call a
-             cost overrun fine (paper cost read "CURRENT · 3.78%" against a
-             3.27% goal), and "Needs you" would blame someone for a result and
-             drag it into the Today block, which is for things that clear when
-             a person acts. This one does not clear by being re-entered. */
-          const CHIP = { late: AMBER, ok: GREEN, open: AMBER, offgoal: RED, info: "#6B7480", untracked: "#9AA3AE" };
-          const CHIP_WORD = { late: "Needs you", ok: "Current", open: "Open", offgoal: "Off goal", info: "For reference", untracked: "Not tracked" };
-
-          const Row = (r, key) => {
-            const c = CHIP[r.state] || "#9AA3AE";
-            // Off-goal rows tap through to the tile that holds the number, so
-            // the next question — why — is one tap away rather than a hunt.
-            const tappable = r.state === "late" || r.state === "open" || r.state === "offgoal";
-            const body = (
-              <>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: INK }}>
-                    {r.label}
-                    {/* ⚠️ NAME WHO IT BELONGS TO ON EVERY ROW THAT IS NOT YOURS.
-                        Showing the whole store to everyone is only useful if a
-                        row also says who to chase — otherwise it is a longer
-                        list with no more meaning, which is worse than the short
-                        one. "Yours" is the marker that keeps your own work
-                        findable inside it. */}
-                    {/* 🐛 "YOURS" MEANT NOTHING ON THE OVERSEER'S SCREEN (Matt,
-                        Aug 7 2026, looking at his own dashboard with Equipment
-                        Log, Food Quality and Food Safety all badged YOURS at
-                        once). ownsRow short-circuits on `isOverseer(person)` and
-                        returns true for EVERY row, so the badge said Yours about
-                        all of them and "yours first" sorted nothing.
-                        inputRegistry already carries the scar in words: it
-                        "reads as everything is waiting on me".
-                        ⇒ For an overseer, show WHO IT ACTUALLY BELONGS TO. He
-                        asked to see what is not done, and a name is the half
-                        that makes that actionable — the question after "this is
-                        late" is always "who do I ask".
-                        ⚠️ DISPLAY ONLY. `mine` still decides what the Today block
-                        acts on and where the late push routes, and none of that
-                        moves. This changes one badge, not who is responsible for
-                        anything. */}
-                    {r.mine && !overseer ? (
-                      <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.04em", color: PEAK, marginLeft: 7, textTransform: "uppercase" }}>Yours</span>
-                    ) : (r.owner && r.owner.label) ? (
-                      <span style={{ fontSize: 11, fontWeight: 600, color: "#9AA3AE", marginLeft: 7 }}>· {r.owner.label}</span>
-                    ) : null}
-                  </span>
-                  <span style={{ display: "block", fontSize: 11.5, color: "#6B7480", marginTop: 1 }}>
-                    {r.cadence}{r.note ? ` · ${r.note}` : ""}
-                  </span>
-                  {/* ★ WHERE THE NUMBER COMES FROM. Matt, Jul 29: "when this goes
-                      to a second store this needs to tell the OPERATOR and ops
-                      director exactly what to do and where to get it."
-                      Knowing a row is late is useless to somebody who does not
-                      know which report to open. Half of these live outside the
-                      Hub entirely — CFA Now, Signal, CFA Supply, a time punch
-                      report — and that knowledge existed nowhere but in Matt's
-                      head.
-                      ⚠️ ONLY ON ROWS THAT NEED ACTION. Printing the source under
-                      every green row turns the register into a wall of text and
-                      buries the two lines that matter. A row that is current
-                      does not need telling where to go. */}
-                  {r.how && (r.state === "late" || r.state === "open" || r.state === "offgoal" || r.state === "untracked") ? (
-                    <span style={{ display: "block", fontSize: 11, color: "#8A93A0", marginTop: 3, lineHeight: 1.35 }}>
-                      {r.how}
-                    </span>
-                  ) : null}
-                  {/* ★ WHY IT MATTERS. Matt, Jul 29: it has to teach a new ops
-                      director the job, not just list what is late. "Food
-                      invoices not entered" means nothing to somebody who does
-                      not know it makes food cost read LOW — which looks like
-                      good news and is the reason nobody chases it.
-                      ⚠️ Only on rows that need action, same as the source line.
-                      A green board must stay readable at a glance. */}
-                  {/* ★ VENDOR BRIDGE CANDIDATE. Matt, Jul 30 2026: he wants
-                      anything importable to stand out so he can pitch it to Nick
-                      and Corp. Shown on EVERY bridgeable row regardless of state
-                      — unlike the source and consequence lines, which only appear
-                      when a row needs action. The pitch is about the shape of the
-                      work, not about whether today's number is late. */}
-                  {r.bridge ? (
-                    <span style={{ display: "inline-block", fontSize: 10, fontWeight: 800, letterSpacing: "0.04em",
-                                   color: "#1E3A8A", background: "#EFF6FF", border: "1px solid #BFDBFE",
-                                   borderRadius: 5, padding: "1px 6px", marginTop: 3 }}>
-                      ⇄ {r.bridge} could send this
-                    </span>
-                  ) : null}
-                  {r.feeds && (r.state === "late" || r.state === "offgoal" || r.state === "untracked") ? (
-                    <span style={{ display: "block", fontSize: 11, color: "#A3ABB6", marginTop: 2, lineHeight: 1.35, fontStyle: "italic" }}>
-                      {r.feeds}
-                    </span>
-                  ) : null}
-                </span>
-                <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: c, textTransform: "uppercase", whiteSpace: "nowrap", flexShrink: 0 }}>
-                  {CHIP_WORD[r.state]}{tappable ? " →" : ""}
-                </span>
-              </>
-            );
-            /* ★ THE BOX CARRIES THE COLOUR UNTIL THE INPUT IS DONE.
-               Matt, Aug 7 2026: "for the daily inputs add color in the boxes
-               until completed?"
-
-               Before this, every row in the register was the same flat white
-               line and the only colour was the small word on the far right —
-               so on a phone the thing you scan first, the shape of the row,
-               said nothing at all.
-
-               ⚠️ ONLY ROWS THAT NEED SOMEBODY. `tappable` is already exactly
-               that set (late, open, off goal), which is why it is reused here
-               instead of a second list that could drift from it. A row that is
-               Current gets NO tint and goes back to plain white — that is the
-               "until completed" half of the ask, and it is the half that makes
-               the colour mean anything. This file already carries the scar for
-               the opposite instinct two hundred lines up: colouring every row
-               "turns the register into a wall of text and buries the two lines
-               that matter".
-               ⚠️ NO NEW COLOURS. `c` is the row's own chip colour, the one the
-               word on the right is already wearing, at 6% for the fill. Same
-               8-digit-hex trick the Today box uses for its green.
-               ⚠️ THE TRANSPARENT LEFT BORDER IS LOAD-BEARING. Untinted rows
-               keep the same 3px so text does not shift sideways as rows change
-               state — without it a board going green visibly jumps. */
-            const style = {
-              width: "100%", textAlign: "left", border: "none",
-              background: tappable ? `${c}0F` : "none",
-              borderTop: "1px solid #F1F3F5",
-              borderLeft: `3px solid ${tappable ? c : "transparent"}`,
-              display: "flex", alignItems: "center",
-              gap: 10, padding: "10px 14px 10px 11px",
-              cursor: tappable ? "pointer" : "default",
-            };
-            return tappable ? (
-              <button key={key} style={style} onClick={() => {
-                if (r.tab) { try { localStorage.setItem(FIN_LAST_TAB_KEY, r.tab); } catch {} }
-                openTool(toolById(r.tile), r.props);
-              }}>{body}</button>
-            ) : (
-              <div key={key} style={style}>{body}</div>
-            );
-          };
-
-          return (
-            <div style={{ background: cardSurface(PEAK, 0.5), border: "1px solid #E5E7EB", borderLeft: `3px solid ${PEAK}`, borderTop: `3px solid ${PEAK}`, borderRadius: 14, marginBottom: 14, boxShadow: CARD_3D, overflow: "hidden" }}>
-              <button
-                onClick={() => setInputsOpen((v) => !v)}
-                style={{ width: "100%", textAlign: "left", background: "none", border: "none", cursor: "pointer", padding: "12px 14px" }}
-              >
-                <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.14em", color: PEAK, textTransform: "uppercase" }}>Input health</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3 }}>
-                  <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: INK }}>
-                    {`${trackN} tracked`}
-                    <span style={{ fontWeight: 600, color: "#6B7480" }}>
-                      {`${openN ? ` · ${openN} open list${openN === 1 ? "" : "s"}` : ""}${untrN ? ` · ${untrN} not tracked` : ""}`}
-                    </span>
-                  </span>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: PEAK }}>{inputsOpen ? "hide ▲" : "view ▾"}</span>
-                </div>
-              </button>
-
-              {inputsOpen && (
-                <div>
-                  {/* ★ WHAT THE WORDS MEAN. Matt, Jul 29: it has to be usable by
-                      a new ops director on day one, at a second store, with
-                      nobody to ask.
-
-                      Every row ends in one of six words — Current, Needs you,
-                      Off goal, Open, Not tracked, For reference — and not one of
-                      them was ever defined anywhere. They are obvious only to
-                      the person who built them. "Off goal" and "Needs you" look
-                      like the same kind of bad until you know one clears when
-                      you type something and the other does not.
-
-                      ⚠️ ALWAYS VISIBLE, NOT DISMISSIBLE. A first-time reader
-                      dismisses things before they know whether they needed them,
-                      and this is precisely for the person who has not learned
-                      the screen yet. It costs one line. */}
-                  <div style={{ padding: "0 14px 9px", fontSize: 11, color: "#9AA3AE", lineHeight: 1.5 }}>
-                    <span style={{ fontWeight: 800, color: PEAK }}>Needs you</span> = enter it and the row clears ·{" "}
-                    <span style={{ fontWeight: 800, color: RED }}>Off goal</span> = entered, but the number missed target ·{" "}
-                    <span style={{ fontWeight: 800, color: "#9AA3AE" }}>Not tracked</span> = nothing has ever been recorded ·{" "}
-                    <span style={{ fontWeight: 800 }}>Yours</span> = you own it. Tap any row to open the tool that holds it.
-                  </div>
-
-                  {/* ★ THE PITCH, IN ONE LINE. Matt takes this to Nick and Corp.
-                      Deliberately states the ASK as "stop retyping data CFA
-                      already has" rather than "build us an integration" — the
-                      first is a cost argument with evidence behind it, the second
-                      is a favour. The count comes from the rows themselves, so it
-                      cannot drift from what the register actually shows. */}
-                  {bridge.count > 0 && (
-                    <div style={{ margin: "0 14px 10px", padding: "9px 11px", borderRadius: 9,
-                                  background: "#EFF6FF", border: "1px solid #BFDBFE" }}>
-                      <div style={{ fontSize: 11.5, fontWeight: 800, color: "#1E3A8A" }}>
-                        ⇄ {bridge.count} of {bridge.total} inputs are hand-keyed from systems that already hold the data
-                      </div>
-                      <div style={{ fontSize: 11, color: "#1E40AF", marginTop: 3, lineHeight: 1.45 }}>
-                        {bridge.systems.map((sysName) => `${sysName} (${bridge.bySystem[sysName].length})`).join(" · ")}
-                      </div>
-                      <div style={{ fontSize: 10.5, color: "#3B5BA5", marginTop: 4, lineHeight: 1.45 }}>
-                        Every one of these is a number a person retypes into the Hub from a Chick-fil-A
-                        system. A vendor bridge would not create new data — it would stop the copying.
-                      </div>
-                    </div>
-                  )}
-
-                  {/* The toggle is for EVERYONE now, not just the overseer. The
-                      whole point of showing the whole store is that anybody can
-                      ask "who owns what" — gating the grouping put the answer
-                      behind the seat least likely to need to ask. */}
-                  {(
-                    <div style={{ display: "flex", gap: 6, padding: "0 14px 10px" }}>
-                      {[["needs", "All inputs"], ["cadence", "How often"], ["area", "By area"], ["owner", "By owner"]].map(([k, lab]) => (
-                        <button key={k} onClick={() => setInputsView(k)}
-                          style={{ fontSize: 11.5, fontWeight: 800, padding: "5px 10px", borderRadius: 999, cursor: "pointer",
-                                   border: `1px solid ${inputsView === k ? PEAK : "#E5E7EB"}`,
-                                   background: inputsView === k ? PEAK : "#fff",
-                                   color: inputsView === k ? "#fff" : "#6B7480" }}>{lab}</button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Open lists first — they were the two rows crowding Today,
-                      and they read as a backlog to work down, not a to-do. */}
-                  {inputsView !== "owner" && myOpenLists.length > 0 && (
-                    <div>
-                      <div style={{ padding: "9px 14px 5px", borderTop: "1px solid #F1F3F5", background: "#FAFBFC",
-                                    fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em", color: PEAK, textTransform: "uppercase" }}>
-                        Open lists
-                      </div>
-                      {myOpenLists.map((r, i) => Row(r, `open-${r.id}-${i}`))}
-                    </div>
-                  )}
-
-                  {inputsView === "cadence"
-                    ? (() => {
-                        const groups = inputsByCadence(allInputs);
-                        return CADENCE_BUCKETS.map((b) => {
-                          const items = groups[b] || [];
-                          if (!items.length) return null;   // an empty heading teaches people to skim
-                          const shut = cadenceShut.has(b);
-                          /* ⚠️ THE COUNT THAT MATTERS STAYS ON THE HEADER, so
-                             collapsing a section can hide the detail but never
-                             the fact that something in it needs doing. Hiding a
-                             real miss is the one thing this whole panel exists
-                             to prevent. */
-                          const late = items.filter((r) => r.state === "late").length;
-                          const off = items.filter((r) => r.state === "offgoal").length;
-                          return (
-                            <div key={b}>
-                              <button
-                                type="button"
-                                onClick={() => setCadenceShut((prev) => {
-                                  /* A NEW Set, never a mutated one. React compares
-                                     by identity, and mutating in place renders
-                                     nothing while looking correct. */
-                                  const next = new Set(prev);
-                                  if (next.has(b)) next.delete(b); else next.add(b);
-                                  return next;
-                                })}
-                                style={{
-                                  display: "flex", alignItems: "center", gap: 8, width: "100%",
-                                  padding: "9px 14px 8px", borderTop: "1px solid #F1F3F5",
-                                  background: "#FAFBFC", border: "none", cursor: "pointer",
-                                  textAlign: "left", fontFamily: "inherit",
-                                }}
-                              >
-                                <span style={{ fontSize: 10, color: "#9AA3AE", width: 9 }}>{shut ? "▶" : "▼"}</span>
-                                <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em", color: PEAK, textTransform: "uppercase" }}>{CADENCE_LABEL[b]}</span>
-                                <span style={{ fontSize: 11.5, color: "#6B7480" }}>
-                                  {items.length} input{items.length === 1 ? "" : "s"}
-                                  {off ? ` · ${off} off goal` : ""}
-                                  {late ? ` · ${late} need${late === 1 ? "s" : ""} you` : ""}
-                                </span>
-                              </button>
-                              {!shut && items.map((r, i) => Row(r, `cad-${b}-${r.id}-${i}`))}
-                            </div>
-                          );
-                        });
-                      })()
-                    : inputsView === "area"
-                    ? inputsByArea(allInputs, areaOfRow).map((g) => (
-                        <div key={g.label}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px 5px", borderTop: "1px solid #F1F3F5", background: "#FAFBFC" }}>
-                            <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em", color: PEAK, textTransform: "uppercase" }}>{g.label}</span>
-                            <span style={{ fontSize: 11.5, color: "#6B7480" }}>
-                              {g.items.length} input{g.items.length === 1 ? "" : "s"}
-                              {g.offgoal ? ` · ${g.offgoal} off goal` : ""}
-                              {g.late ? ` · ${g.late} late` : ""}
-                            </span>
-                          </div>
-                          {g.items.map((r, i) => Row(r, `area-${g.label}-${r.id}-${i}`))}
-                        </div>
-                      ))
-                    : inputsView === "owner"
-                    ? inputsByOwner(allInputs).map((g) => (
-                        <div key={g.label}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px 5px", borderTop: "1px solid #F1F3F5", background: "#FAFBFC" }}>
-                            <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em", color: PEAK, textTransform: "uppercase" }}>{g.label}</span>
-                            <span style={{ fontSize: 11.5, color: "#6B7480" }}>
-                              {g.items.length} input{g.items.length === 1 ? "" : "s"}{g.late ? ` · ${g.late} late` : ""}
-                            </span>
-                            {/* ★ NUDGE THE PERSON THE ROW ALREADY NAMES (Matt,
-                                Aug 3 2026: "Nudge them"). Shown only where it
-                                can actually work and actually help:
-                                  · a SINGLE named person — a role, a shift or
-                                    a co-owned pair has nobody specific to push
-                                    to, and guessing one would be worse than
-                                    offering nothing;
-                                  · something genuinely LATE — there is no such
-                                    thing as a useful nudge about a green row;
-                                  · tier 2 and up, matching the Worker's own
-                                    rank gate, which is the real one. This test
-                                    only hides a button that would be refused;
-                                  · never yourself, which is always a mis-tap
-                                    and burns the half-hour limit on the one
-                                    person who did not need telling.
-                                The message carries the row's OWN sentence, so
-                                it says what is outstanding rather than "check
-                                the Hub". */}
-                            {(() => {
-                              const own = g.items[0] && g.items[0].owner;
-                              const solo = own && own.kind === "person" && !own.names && own.name ? own.name : null;
-                              const late = g.items.find((i) => i.state === "late");
-                              if (!solo || !late || tier < 2) return null;
-                              if (user && user.name && normName(user.name) === normName(solo)) return null;
-                              return <NudgeButton name={solo} what={late.text} />;
-                            })()}
-                          </div>
-                          {g.items.map((r, i) => Row(r, `${g.label}-${r.id}-${i}`))}
-                        </div>
-                      ))
-                    : (() => {
-                        /* ⛔⛔ A BAND IS A HEADING, NOT A DIVIDER. IT MUST NAME
-                           WHAT FOLLOWS IT.
-
-                           Matt, Aug 21 2026, off his own dashboard. The "Open
-                           lists" band above sits over ONE open list. In THIS
-                           view every ordinary input then followed it with no
-                           band of its own, so Daily sales, Labor hours and
-                           Daily food cost were stacked under a heading reading
-                           OPEN LISTS and read as open lists.
-
-                           ⚠️ THE OTHER THREE VIEWS WERE NEVER WRONG, and that is
-                           why this went unseen. Cadence, area and owner each
-                           head every group they draw, so the open-lists band is
-                           always closed off by the next heading. Only the
-                           default view left it orphaned, and the default view
-                           is the one everybody lands on.
-
-                           ⚠️ THE COUNT IS OF THE ROWS THIS BAND HEADS, never of
-                           the panel. That is what the other three bands do, and
-                           for anybody who is not an overseer the two numbers
-                           genuinely differ: the header counts THEIR inputs, the
-                           list draws the whole board. A band that borrowed the
-                           header's figure would print a number that does not
-                           match what is under it. */
-                        const rest = allInputs.filter((r) => r.state !== "open");
-                        if (!rest.length) return null;   // an empty heading teaches people to skim
-                        const late = rest.filter((r) => r.state === "late").length;
-                        const off  = rest.filter((r) => r.state === "offgoal").length;
-                        const untr = rest.filter((r) => r.state === "untracked").length;
-                        return (
-                          <div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px 5px", borderTop: "1px solid #F1F3F5", background: "#FAFBFC" }}>
-                              <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em", color: PEAK, textTransform: "uppercase" }}>
-                                {myOpenLists.length ? "Everything else" : "All inputs"}
-                              </span>
-                              <span style={{ fontSize: 11.5, color: "#6B7480" }}>
-                                {rest.length - untr} input{rest.length - untr === 1 ? "" : "s"}
-                                {off ? ` · ${off} off goal` : ""}
-                                {late ? ` · ${late} need${late === 1 ? "s" : ""} you` : ""}
-                                {untr ? ` · ${untr} not tracked` : ""}
-                              </span>
-                            </div>
-                            {rest.map((r, i) => Row(r, `${r.id}-${i}`))}
-                          </div>
-                        );
-                      })()}
-                </div>
-              )}
-            </div>
-          );
-        })()}
 
         {/* ── Morning digest — condensed to a "focus today" preview with an
               expandable full briefing, so it no longer eats a whole screen ─ */}
@@ -6651,7 +6252,6 @@ export default function App() {
             empty bordered box every day. It carries its own frame. */}
         {signedIn && !openSection && !searching && <MyPhoto user={user} />}
 
-        {signedIn && !openSection && !searching && <QuietPeople tier={tier} />}
 
         {signedIn && !openSection && !searching && startHereTools.length > 0 && (
           <div style={{ marginBottom: 18 }}>
@@ -6677,6 +6277,418 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* ⬇️ MOVED BELOW "Start here" ON Matt's INSTRUCTION, Aug 22 2026:
+              "Move input health and setup but quiet under scorecard."
+              Business Scorecard is the last tile in that strip.
+
+              ⛔⛔ THIS IS A SOURCE MOVE, NOT A CSS `order`, AND THAT IS NOT A
+              STYLE CHOICE. At the origin store on Aug 21 2026 three blocks were
+              repositioned with CSS ordering values and it moved two big readouts
+              above every tool with NO trace at the place anybody reads — the JSX
+              still said they rendered below. This repo carries ZERO order
+              overrides and must keep it that way. */}
+        {/* ── Input health ────────────────────────────────────────
+              The full register behind the Today block. Today shows what needs
+              doing; this shows everything that is tracked, what it is not
+              tracking, and — for the Executive Director seat — who owns what.
+
+              Renders nothing for a person who owns no inputs. An empty panel
+              is worse than no panel: it teaches people the thing is irrelevant
+              to them, and then they stop reading the one that isn't. */}
+        {!openSection && !searching && user && myInputs.length > 0 && (() => {
+          // NO "N need you" HERE. It duplicated the Today block sitting directly
+          // above — same rows, same count, two cards apart. This line describes
+          // SCOPE (how much is watched); Today describes urgency.
+          const openN  = myOpenLists.length;
+          const untrN  = myInputs.filter((r) => r.state === "untracked").length;
+          const trackN = myInputs.length - untrN - openN;
+          const overseer = isOverseer(user);
+          /* "offgoal" = the input IS entered and on time, but the number misses
+             its target. Its own colour and word on purpose: green would call a
+             cost overrun fine (paper cost read "CURRENT · 3.78%" against a
+             3.27% goal), and "Needs you" would blame someone for a result and
+             drag it into the Today block, which is for things that clear when
+             a person acts. This one does not clear by being re-entered. */
+          const CHIP = { late: AMBER, ok: GREEN, open: AMBER, offgoal: RED, info: "#6B7480", untracked: "#9AA3AE" };
+          const CHIP_WORD = { late: "Needs you", ok: "Current", open: "Open", offgoal: "Off goal", info: "For reference", untracked: "Not tracked" };
+
+          const Row = (r, key) => {
+            const c = CHIP[r.state] || "#9AA3AE";
+            // Off-goal rows tap through to the tile that holds the number, so
+            // the next question — why — is one tap away rather than a hunt.
+            const tappable = r.state === "late" || r.state === "open" || r.state === "offgoal";
+            const body = (
+              <>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: INK }}>
+                    {r.label}
+                    {/* ⚠️ NAME WHO IT BELONGS TO ON EVERY ROW THAT IS NOT YOURS.
+                        Showing the whole store to everyone is only useful if a
+                        row also says who to chase — otherwise it is a longer
+                        list with no more meaning, which is worse than the short
+                        one. "Yours" is the marker that keeps your own work
+                        findable inside it. */}
+                    {/* 🐛 "YOURS" MEANT NOTHING ON THE OVERSEER'S SCREEN (Matt,
+                        Aug 7 2026, looking at his own dashboard with Equipment
+                        Log, Food Quality and Food Safety all badged YOURS at
+                        once). ownsRow short-circuits on `isOverseer(person)` and
+                        returns true for EVERY row, so the badge said Yours about
+                        all of them and "yours first" sorted nothing.
+                        inputRegistry already carries the scar in words: it
+                        "reads as everything is waiting on me".
+                        ⇒ For an overseer, show WHO IT ACTUALLY BELONGS TO. He
+                        asked to see what is not done, and a name is the half
+                        that makes that actionable — the question after "this is
+                        late" is always "who do I ask".
+                        ⚠️ DISPLAY ONLY. `mine` still decides what the Today block
+                        acts on and where the late push routes, and none of that
+                        moves. This changes one badge, not who is responsible for
+                        anything. */}
+                    {r.mine && !overseer ? (
+                      <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.04em", color: PEAK, marginLeft: 7, textTransform: "uppercase" }}>Yours</span>
+                    ) : (r.owner && r.owner.label) ? (
+                      <span style={{ fontSize: 11, fontWeight: 600, color: "#9AA3AE", marginLeft: 7 }}>· {r.owner.label}</span>
+                    ) : null}
+                  </span>
+                  <span style={{ display: "block", fontSize: 11.5, color: "#6B7480", marginTop: 1 }}>
+                    {r.cadence}{r.note ? ` · ${r.note}` : ""}
+                  </span>
+                  {/* ★ WHERE THE NUMBER COMES FROM. Matt, Jul 29: "when this goes
+                      to a second store this needs to tell the OPERATOR and ops
+                      director exactly what to do and where to get it."
+                      Knowing a row is late is useless to somebody who does not
+                      know which report to open. Half of these live outside the
+                      Hub entirely — CFA Now, Signal, CFA Supply, a time punch
+                      report — and that knowledge existed nowhere but in Matt's
+                      head.
+                      ⚠️ ONLY ON ROWS THAT NEED ACTION. Printing the source under
+                      every green row turns the register into a wall of text and
+                      buries the two lines that matter. A row that is current
+                      does not need telling where to go. */}
+                  {r.how && (r.state === "late" || r.state === "open" || r.state === "offgoal" || r.state === "untracked") ? (
+                    <span style={{ display: "block", fontSize: 11, color: "#8A93A0", marginTop: 3, lineHeight: 1.35 }}>
+                      {r.how}
+                    </span>
+                  ) : null}
+                  {/* ★ WHY IT MATTERS. Matt, Jul 29: it has to teach a new ops
+                      director the job, not just list what is late. "Food
+                      invoices not entered" means nothing to somebody who does
+                      not know it makes food cost read LOW — which looks like
+                      good news and is the reason nobody chases it.
+                      ⚠️ Only on rows that need action, same as the source line.
+                      A green board must stay readable at a glance. */}
+                  {/* ★ VENDOR BRIDGE CANDIDATE. Matt, Jul 30 2026: he wants
+                      anything importable to stand out so he can pitch it to Nick
+                      and Corp. Shown on EVERY bridgeable row regardless of state
+                      — unlike the source and consequence lines, which only appear
+                      when a row needs action. The pitch is about the shape of the
+                      work, not about whether today's number is late. */}
+                  {r.bridge ? (
+                    <span style={{ display: "inline-block", fontSize: 10, fontWeight: 800, letterSpacing: "0.04em",
+                                   color: "#1E3A8A", background: "#EFF6FF", border: "1px solid #BFDBFE",
+                                   borderRadius: 5, padding: "1px 6px", marginTop: 3 }}>
+                      ⇄ {r.bridge} could send this
+                    </span>
+                  ) : null}
+                  {r.feeds && (r.state === "late" || r.state === "offgoal" || r.state === "untracked") ? (
+                    <span style={{ display: "block", fontSize: 11, color: "#A3ABB6", marginTop: 2, lineHeight: 1.35, fontStyle: "italic" }}>
+                      {r.feeds}
+                    </span>
+                  ) : null}
+                </span>
+                <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: c, textTransform: "uppercase", whiteSpace: "nowrap", flexShrink: 0 }}>
+                  {CHIP_WORD[r.state]}{tappable ? " →" : ""}
+                </span>
+              </>
+            );
+            /* ★ THE BOX CARRIES THE COLOUR UNTIL THE INPUT IS DONE.
+               Matt, Aug 7 2026: "for the daily inputs add color in the boxes
+               until completed?"
+
+               Before this, every row in the register was the same flat white
+               line and the only colour was the small word on the far right —
+               so on a phone the thing you scan first, the shape of the row,
+               said nothing at all.
+
+               ⚠️ ONLY ROWS THAT NEED SOMEBODY. `tappable` is already exactly
+               that set (late, open, off goal), which is why it is reused here
+               instead of a second list that could drift from it. A row that is
+               Current gets NO tint and goes back to plain white — that is the
+               "until completed" half of the ask, and it is the half that makes
+               the colour mean anything. This file already carries the scar for
+               the opposite instinct two hundred lines up: colouring every row
+               "turns the register into a wall of text and buries the two lines
+               that matter".
+               ⚠️ NO NEW COLOURS. `c` is the row's own chip colour, the one the
+               word on the right is already wearing, at 6% for the fill. Same
+               8-digit-hex trick the Today box uses for its green.
+               ⚠️ THE TRANSPARENT LEFT BORDER IS LOAD-BEARING. Untinted rows
+               keep the same 3px so text does not shift sideways as rows change
+               state — without it a board going green visibly jumps. */
+            const style = {
+              width: "100%", textAlign: "left", border: "none",
+              background: tappable ? `${c}0F` : "none",
+              borderTop: "1px solid #F1F3F5",
+              borderLeft: `3px solid ${tappable ? c : "transparent"}`,
+              display: "flex", alignItems: "center",
+              gap: 10, padding: "10px 14px 10px 11px",
+              cursor: tappable ? "pointer" : "default",
+            };
+            return tappable ? (
+              <button key={key} style={style} onClick={() => {
+                if (r.tab) { try { localStorage.setItem(FIN_LAST_TAB_KEY, r.tab); } catch {} }
+                openTool(toolById(r.tile), r.props);
+              }}>{body}</button>
+            ) : (
+              <div key={key} style={style}>{body}</div>
+            );
+          };
+
+          return (
+            <div style={{ background: cardSurface(PEAK, 0.5), border: "1px solid #E5E7EB", borderLeft: `3px solid ${PEAK}`, borderTop: `3px solid ${PEAK}`, borderRadius: 14, marginBottom: 14, boxShadow: CARD_3D, overflow: "hidden" }}>
+              <button
+                onClick={() => setInputsOpen((v) => !v)}
+                style={{ width: "100%", textAlign: "left", background: "none", border: "none", cursor: "pointer", padding: "12px 14px" }}
+              >
+                <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.14em", color: PEAK, textTransform: "uppercase" }}>Input health</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3 }}>
+                  <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: INK }}>
+                    {`${trackN} tracked`}
+                    <span style={{ fontWeight: 600, color: "#6B7480" }}>
+                      {`${openN ? ` · ${openN} open list${openN === 1 ? "" : "s"}` : ""}${untrN ? ` · ${untrN} not tracked` : ""}`}
+                    </span>
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: PEAK }}>{inputsOpen ? "hide ▲" : "view ▾"}</span>
+                </div>
+              </button>
+
+              {inputsOpen && (
+                <div>
+                  {/* ★ WHAT THE WORDS MEAN. Matt, Jul 29: it has to be usable by
+                      a new ops director on day one, at a second store, with
+                      nobody to ask.
+
+                      Every row ends in one of six words — Current, Needs you,
+                      Off goal, Open, Not tracked, For reference — and not one of
+                      them was ever defined anywhere. They are obvious only to
+                      the person who built them. "Off goal" and "Needs you" look
+                      like the same kind of bad until you know one clears when
+                      you type something and the other does not.
+
+                      ⚠️ ALWAYS VISIBLE, NOT DISMISSIBLE. A first-time reader
+                      dismisses things before they know whether they needed them,
+                      and this is precisely for the person who has not learned
+                      the screen yet. It costs one line. */}
+                  <div style={{ padding: "0 14px 9px", fontSize: 11, color: "#9AA3AE", lineHeight: 1.5 }}>
+                    <span style={{ fontWeight: 800, color: PEAK }}>Needs you</span> = enter it and the row clears ·{" "}
+                    <span style={{ fontWeight: 800, color: RED }}>Off goal</span> = entered, but the number missed target ·{" "}
+                    <span style={{ fontWeight: 800, color: "#9AA3AE" }}>Not tracked</span> = nothing has ever been recorded ·{" "}
+                    <span style={{ fontWeight: 800 }}>Yours</span> = you own it. Tap any row to open the tool that holds it.
+                  </div>
+
+                  {/* ★ THE PITCH, IN ONE LINE. Matt takes this to Nick and Corp.
+                      Deliberately states the ASK as "stop retyping data CFA
+                      already has" rather than "build us an integration" — the
+                      first is a cost argument with evidence behind it, the second
+                      is a favour. The count comes from the rows themselves, so it
+                      cannot drift from what the register actually shows. */}
+                  {bridge.count > 0 && (
+                    <div style={{ margin: "0 14px 10px", padding: "9px 11px", borderRadius: 9,
+                                  background: "#EFF6FF", border: "1px solid #BFDBFE" }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 800, color: "#1E3A8A" }}>
+                        ⇄ {bridge.count} of {bridge.total} inputs are hand-keyed from systems that already hold the data
+                      </div>
+                      <div style={{ fontSize: 11, color: "#1E40AF", marginTop: 3, lineHeight: 1.45 }}>
+                        {bridge.systems.map((sysName) => `${sysName} (${bridge.bySystem[sysName].length})`).join(" · ")}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: "#3B5BA5", marginTop: 4, lineHeight: 1.45 }}>
+                        Every one of these is a number a person retypes into the Hub from a Chick-fil-A
+                        system. A vendor bridge would not create new data — it would stop the copying.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* The toggle is for EVERYONE now, not just the overseer. The
+                      whole point of showing the whole store is that anybody can
+                      ask "who owns what" — gating the grouping put the answer
+                      behind the seat least likely to need to ask. */}
+                  {(
+                    <div style={{ display: "flex", gap: 6, padding: "0 14px 10px" }}>
+                      {[["needs", "All inputs"], ["cadence", "How often"], ["area", "By area"], ["owner", "By owner"]].map(([k, lab]) => (
+                        <button key={k} onClick={() => setInputsView(k)}
+                          style={{ fontSize: 11.5, fontWeight: 800, padding: "5px 10px", borderRadius: 999, cursor: "pointer",
+                                   border: `1px solid ${inputsView === k ? PEAK : "#E5E7EB"}`,
+                                   background: inputsView === k ? PEAK : "#fff",
+                                   color: inputsView === k ? "#fff" : "#6B7480" }}>{lab}</button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Open lists first — they were the two rows crowding Today,
+                      and they read as a backlog to work down, not a to-do. */}
+                  {inputsView !== "owner" && myOpenLists.length > 0 && (
+                    <div>
+                      <div style={{ padding: "9px 14px 5px", borderTop: "1px solid #F1F3F5", background: "#FAFBFC",
+                                    fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em", color: PEAK, textTransform: "uppercase" }}>
+                        Open lists
+                      </div>
+                      {myOpenLists.map((r, i) => Row(r, `open-${r.id}-${i}`))}
+                    </div>
+                  )}
+
+                  {inputsView === "cadence"
+                    ? (() => {
+                        const groups = inputsByCadence(allInputs);
+                        return CADENCE_BUCKETS.map((b) => {
+                          const items = groups[b] || [];
+                          if (!items.length) return null;   // an empty heading teaches people to skim
+                          const shut = cadenceShut.has(b);
+                          /* ⚠️ THE COUNT THAT MATTERS STAYS ON THE HEADER, so
+                             collapsing a section can hide the detail but never
+                             the fact that something in it needs doing. Hiding a
+                             real miss is the one thing this whole panel exists
+                             to prevent. */
+                          const late = items.filter((r) => r.state === "late").length;
+                          const off = items.filter((r) => r.state === "offgoal").length;
+                          return (
+                            <div key={b}>
+                              <button
+                                type="button"
+                                onClick={() => setCadenceShut((prev) => {
+                                  /* A NEW Set, never a mutated one. React compares
+                                     by identity, and mutating in place renders
+                                     nothing while looking correct. */
+                                  const next = new Set(prev);
+                                  if (next.has(b)) next.delete(b); else next.add(b);
+                                  return next;
+                                })}
+                                style={{
+                                  display: "flex", alignItems: "center", gap: 8, width: "100%",
+                                  padding: "9px 14px 8px", borderTop: "1px solid #F1F3F5",
+                                  background: "#FAFBFC", border: "none", cursor: "pointer",
+                                  textAlign: "left", fontFamily: "inherit",
+                                }}
+                              >
+                                <span style={{ fontSize: 10, color: "#9AA3AE", width: 9 }}>{shut ? "▶" : "▼"}</span>
+                                <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em", color: PEAK, textTransform: "uppercase" }}>{CADENCE_LABEL[b]}</span>
+                                <span style={{ fontSize: 11.5, color: "#6B7480" }}>
+                                  {items.length} input{items.length === 1 ? "" : "s"}
+                                  {off ? ` · ${off} off goal` : ""}
+                                  {late ? ` · ${late} need${late === 1 ? "s" : ""} you` : ""}
+                                </span>
+                              </button>
+                              {!shut && items.map((r, i) => Row(r, `cad-${b}-${r.id}-${i}`))}
+                            </div>
+                          );
+                        });
+                      })()
+                    : inputsView === "area"
+                    ? inputsByArea(allInputs, areaOfRow).map((g) => (
+                        <div key={g.label}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px 5px", borderTop: "1px solid #F1F3F5", background: "#FAFBFC" }}>
+                            <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em", color: PEAK, textTransform: "uppercase" }}>{g.label}</span>
+                            <span style={{ fontSize: 11.5, color: "#6B7480" }}>
+                              {g.items.length} input{g.items.length === 1 ? "" : "s"}
+                              {g.offgoal ? ` · ${g.offgoal} off goal` : ""}
+                              {g.late ? ` · ${g.late} late` : ""}
+                            </span>
+                          </div>
+                          {g.items.map((r, i) => Row(r, `area-${g.label}-${r.id}-${i}`))}
+                        </div>
+                      ))
+                    : inputsView === "owner"
+                    ? inputsByOwner(allInputs).map((g) => (
+                        <div key={g.label}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px 5px", borderTop: "1px solid #F1F3F5", background: "#FAFBFC" }}>
+                            <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em", color: PEAK, textTransform: "uppercase" }}>{g.label}</span>
+                            <span style={{ fontSize: 11.5, color: "#6B7480" }}>
+                              {g.items.length} input{g.items.length === 1 ? "" : "s"}{g.late ? ` · ${g.late} late` : ""}
+                            </span>
+                            {/* ★ NUDGE THE PERSON THE ROW ALREADY NAMES (Matt,
+                                Aug 3 2026: "Nudge them"). Shown only where it
+                                can actually work and actually help:
+                                  · a SINGLE named person — a role, a shift or
+                                    a co-owned pair has nobody specific to push
+                                    to, and guessing one would be worse than
+                                    offering nothing;
+                                  · something genuinely LATE — there is no such
+                                    thing as a useful nudge about a green row;
+                                  · tier 2 and up, matching the Worker's own
+                                    rank gate, which is the real one. This test
+                                    only hides a button that would be refused;
+                                  · never yourself, which is always a mis-tap
+                                    and burns the half-hour limit on the one
+                                    person who did not need telling.
+                                The message carries the row's OWN sentence, so
+                                it says what is outstanding rather than "check
+                                the Hub". */}
+                            {(() => {
+                              const own = g.items[0] && g.items[0].owner;
+                              const solo = own && own.kind === "person" && !own.names && own.name ? own.name : null;
+                              const late = g.items.find((i) => i.state === "late");
+                              if (!solo || !late || tier < 2) return null;
+                              if (user && user.name && normName(user.name) === normName(solo)) return null;
+                              return <NudgeButton name={solo} what={late.text} />;
+                            })()}
+                          </div>
+                          {g.items.map((r, i) => Row(r, `${g.label}-${r.id}-${i}`))}
+                        </div>
+                      ))
+                    : (() => {
+                        /* ⛔⛔ A BAND IS A HEADING, NOT A DIVIDER. IT MUST NAME
+                           WHAT FOLLOWS IT.
+
+                           Matt, Aug 21 2026, off his own dashboard. The "Open
+                           lists" band above sits over ONE open list. In THIS
+                           view every ordinary input then followed it with no
+                           band of its own, so Daily sales, Labor hours and
+                           Daily food cost were stacked under a heading reading
+                           OPEN LISTS and read as open lists.
+
+                           ⚠️ THE OTHER THREE VIEWS WERE NEVER WRONG, and that is
+                           why this went unseen. Cadence, area and owner each
+                           head every group they draw, so the open-lists band is
+                           always closed off by the next heading. Only the
+                           default view left it orphaned, and the default view
+                           is the one everybody lands on.
+
+                           ⚠️ THE COUNT IS OF THE ROWS THIS BAND HEADS, never of
+                           the panel. That is what the other three bands do, and
+                           for anybody who is not an overseer the two numbers
+                           genuinely differ: the header counts THEIR inputs, the
+                           list draws the whole board. A band that borrowed the
+                           header's figure would print a number that does not
+                           match what is under it. */
+                        const rest = allInputs.filter((r) => r.state !== "open");
+                        if (!rest.length) return null;   // an empty heading teaches people to skim
+                        const late = rest.filter((r) => r.state === "late").length;
+                        const off  = rest.filter((r) => r.state === "offgoal").length;
+                        const untr = rest.filter((r) => r.state === "untracked").length;
+                        return (
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px 5px", borderTop: "1px solid #F1F3F5", background: "#FAFBFC" }}>
+                              <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em", color: PEAK, textTransform: "uppercase" }}>
+                                {myOpenLists.length ? "Everything else" : "All inputs"}
+                              </span>
+                              <span style={{ fontSize: 11.5, color: "#6B7480" }}>
+                                {rest.length - untr} input{rest.length - untr === 1 ? "" : "s"}
+                                {off ? ` · ${off} off goal` : ""}
+                                {late ? ` · ${late} need${late === 1 ? "s" : ""} you` : ""}
+                                {untr ? ` · ${untr} not tracked` : ""}
+                              </span>
+                            </div>
+                            {rest.map((r, i) => Row(r, `${r.id}-${i}`))}
+                          </div>
+                        );
+                      })()}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {signedIn && !openSection && !searching && <QuietPeople tier={tier} />}
 
 
         {/* ── Top leaders — the Shift Leader Scorecard's top 3 FRONT + top 3
