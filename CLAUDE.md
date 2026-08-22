@@ -136,6 +136,39 @@ this repo's own `worker.js` rather than grepping for the constant. A constant
 nothing reads is a comment.
 
 
+---
+
+### ⭐ A FABLE AUDIT FOUND A BUG IN THE SAME DAY'S WORK — Aug 22 2026
+
+Two of its findings reached this repo and both are fixed here.
+
+⛔ **`npm run drift` SAID "No drift" OVER A REAL GAP.** A name missing from the
+sibling's `worker.js` but present in **any** other file there is classed
+"elsewhere", and when that was the only difference the report printed "No drift"
+and returned **before the moved list rendered**. Reproduced with a fixture.
+⚠️⚠️ **Its healthy output and its blind output were the same sentence**, which
+is the failure mode that tool exists to prevent. Collisions still do not count
+as drift, so `doctor` stays quiet about them; what changed is that the report
+may no longer claim there is nothing to see while it is holding something.
+
+⛔ **THE BACKUP BUDGET TIMED THE WRONG STRETCH.** `runBackupFiles` started its
+**own** clock, after the database dump. The caller times the **whole request**,
+so a long dump left the copy free to spend the full budget on top and the job
+died exactly as diagnosed. ⇒ One deadline, set before the dump.
+⚠️ It also **kept spending after it fired** — `continue`, not `break`, so every
+remaining bucket was still listed and every file still HEADed; a 20-second
+budget produced a **26.7-second run** — and it could name the wrong budget in
+the note, because the listings after a stop push the subrequest count up.
+⚠️ **`remaining` IS A FLOOR NOW AND SAYS SO.** Counting what is left means
+listing it, which is the work the budget just refused. A silent truncation reads
+as "covered everything" when it did not.
+
+⭐⭐ **THE LESSON, AND IT IS THE ONE TO CARRY: BOTH PASSED A GREEN SUITE.** Six
+checks, every test file and a clean build. The guards graded the PARTS and the
+bugs lived in the space between them. **When a guard grades a rule and a wire
+separately, write one that runs the whole path.**
+
+
 ## ⛔⛔ `App.jsx` NEVER INDEXES THE RAW RANK MAP — Aug 19 2026
 
 `HR_RANK_BY_TITLE` is the **built-in ladder only**. `hrRankOfTitle` is that
