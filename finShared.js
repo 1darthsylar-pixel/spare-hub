@@ -28,8 +28,17 @@ export const LAST_TAB_KEY = "gcfcr-financials-last-tab";
 export const PROFIT_ROLES = Object.freeze([
   "Executive Director", "Executive", "Human Resources", "Owner", "Payroll",
 ]);
+/* ⛔⛔ `typeof role === "string"` IS NOT DEFENSIVE PADDING. Without it the
+   coercion did the deciding, and `String(["Owner"])` is `"Owner"`. Measured,
+   three shapes cleared a gate that guards pay groups: `["Owner"]`,
+   `new String("Owner")`, and any object whose `toString` returns an allowed
+   role. ⚠️ THE ARRAY ONE IS REACHABLE FROM A STORED RECORD — the Worker reads
+   this title out of `gcfcr-hr-roles` through `hrEffectiveTitleForUid`, and JSON
+   can hold `{"tm16": ["Owner"]}`, which is exactly the shape a "somebody holds
+   two titles" change would produce. A GATE MUST FAIL CLOSED.
+   ⚠️ For every real string title the answer is byte-identical to before. */
 export const canSeeProfitShare = (role) =>
-  PROFIT_ROLES.includes(String(role || "").trim());
+  typeof role === "string" && PROFIT_ROLES.includes(role.trim());
 
 /* ── DIRECTORS (Matt, Aug 10 2026) ─────────────────────────────────────────
    Looking at Brandon's phone: "Director should see these things but
@@ -53,8 +62,11 @@ export const canSeeProfitShare = (role) =>
    tile that opens onto a screen the Worker will not feed is worse than a locked
    tile, because it looks like it works. App.jsx and worker.js both import this. */
 export const DIRECTOR_ROLES = Object.freeze(["Director"]);
+/* ⚠️ SAME FAIL-CLOSED RULE AS `canSeeProfitShare`, and for the same reason: it
+   reads the same stored title. Fixing one and not the other is how two halves
+   of one gate start disagreeing, which is the drift this whole file exists for. */
 export const isDirector = (role) =>
-  DIRECTOR_ROLES.includes(String(role || "").trim());
+  typeof role === "string" && DIRECTOR_ROLES.includes(role.trim());
 
 /* Financials tabs a Director does not get.
    ⚠️ "profitshare" IS DELIBERATELY NOT IN THIS LIST. PROFIT_ROLES above already
