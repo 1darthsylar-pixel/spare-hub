@@ -107,6 +107,29 @@ admin lists. Change it and this store inherits another restaurant's setup.
 
 ---
 
+### 🐛 HALF A CARD TREATMENT WAS SHARED AND HALF WAS REMEMBERED — Aug 22 2026
+
+**Found at the origin off a glance at the screen, and this repo had the
+identical fault**: `SalesAllocation`'s `S.card`, `LaborPlanner`'s `S.card` and
+`ShiftLeaderScorecard`'s `eosBar`, **8 of 11 shared card objects compliant**.
+
+⛔ A card on these screens is **three** things: the surface, the shadow and the
+coloured accent edge. The first two were shared and **the edge was typed by hand
+at every call site**, so two thirds were impossible to forget and one third was
+forgotten constantly. ⇒ **The fix was not the cards, it was moving the edge into
+the object.** A caller wanting its own tone still overrides and wins, because
+its spread comes after.
+
+⚠️⚠️ **THE ORDERING IS LOAD-BEARING AND A DIFF CANNOT SHOW IT.** `border` is the
+shorthand and React applies inline styles in **insertion order**, so an edge
+spread moved ABOVE it is overwritten and **every card on the screen goes flat
+again with all six checks green.**
+
+⭐ `cardEdge.test.mjs` grades the order as well as the presence, both arms proven
+by breaking the real code. ⚠️ **It does not replace `flatCards.test.mjs` and must
+not be merged into it** — that one reads the `<div` line, and `<div
+style={S.card}>` carries no style on its own line at all. Two halves, two files.
+
 ### ✅ WHAT THE NIGHT OF Aug 21 2026 BROUGHT ACROSS — measured
 
 **Matt: "I want to wake up tomorrow with all repos In line and no loose ends so
