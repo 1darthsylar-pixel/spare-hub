@@ -109,6 +109,61 @@ its healthy output and its broken output are the same sentence.**
 
 ---
 
+### ✅ A MILEAGE CLAIM KEEPS THE RATE IT WAS LOGGED AT — Aug 22 2026
+
+**Matt: "changing the rate silently re-prices every past claim, including
+months already paid and printed."** It did, at every store.
+
+⛔ `emptyMileage()` stored **no rate**, so all three money sites multiplied miles
+by whatever `storeCfg("financial.mileageRate")` said **at the moment the screen
+rendered**. ⚠️⚠️ **AND TWO COMMENTS PROMISED THE OPPOSITE** — `CashAudit.jsx`:
+*"Rows already recorded keep whatever they were calculated at."*
+`StoreSettings.jsx`: *"Only prices new claims."* Neither was true, and both read
+as a guarantee to whoever was about to change the number.
+
+⇒ The rate is stamped at CREATE. ⛔ **NOTHING IS BACKFILLED** — a trip logged
+before this keeps using the current setting exactly as it always did. Writing a
+rate onto an old row invents a fact about what somebody was paid, which is the
+surgical edit the money rules forbid.
+
+⚠️ **A MONTH SPANNING A RATE CHANGE TOTALS EACH ROW AT ITS OWN RATE AND SAYS
+SO.** It never names a blend: dividing the total back out gives a number nobody
+set and no row was paid at.
+⚠️ **THE ODOMETER HAS NO TRIP AND SO NO RATE OF ITS OWN.** It borrows the newest
+rated trip in the month, falls to the settings box only when no trip has one,
+and the line says which. Going straight to the box would re-price a closed month
+the moment somebody edited it, which is the whole bug.
+
+⭐ **THE RATE IS `0.76` NOW, AND IT IS VERIFIED RATHER THAN REMEMBERED.** `0.70`
+is the **2025** figure. 2026 opened at **72.5c** and the IRS raised it to **76c
+on July 1** on fuel prices (Bulletin 2026-29). ⛔ Read from irs.gov.
+⚠️ **THE LIVE STORE SETTING IS THE OPERATOR'S TO TYPE.** Never edited from a
+session.
+
+🐛🐛 **TWO LIVE BUGS THE TESTS FOUND, AND NEITHER THREW.**
+- **A blank start reading claimed the whole odometer.** `Number("")` is `0` and
+  `isFinite(0)` is true, so no start with an end of 1032 claimed **1032 miles**
+  — **$784.32** filed as a real claim with nothing on screen looking wrong. A
+  typed `0` still works, because 0 is a real reading.
+- **Decimal drift rode into the money.** `1032.9 − 1000.4` is
+  `32.500000000000114`; the screen printed `32.5` and the money used the longer
+  number, then summed it across the month. Rounded to four places, which cannot
+  move a figure anybody typed.
+
+★ **`mileagePay.js` IS A LEAF BECAUSE THE MATHS LIVED IN A `.jsx`**, which no
+Node test can import and nothing in `checks/` can execute — so the one function
+deciding what a person is **paid** was graded by nothing. That is why writing
+its test found two live bugs on the first run.
+⚠️ `mileagePay.test.mjs` 20 · `mileageWiring.test.mjs` 18.
+
+⚠️⚠️ **THIS REPO IS THE ONE THAT MATTERS LONGEST.** Spare is the snapshot every
+new store starts from, so a bug left here is a bug every future store inherits
+on its first day. A store opening tomorrow would otherwise have begun life
+paying **last year's** mileage rate, on a calculation that could claim a whole
+odometer from a blank box.
+
+---
+
 ### ✅ THE BACKUP HAS A SECOND BUDGET, ON TIME — Aug 22 2026
 
 At the origin store `backup` had **never once completed a run**, and the live
