@@ -40,6 +40,13 @@ export const NOTIFY_DEFAULTS = {
   leadership: "",
   hr: "",
   boh: "",
+  /* Who hears that the waste went into Signal. A SEAT, not a rank: "the
+     #2 person" is a fact about this store's own org chart, and deriving it
+     from the HR ladder would guess at a structure nobody here typed.
+     ⚠️ Blank until this store names them. An unset seat answers
+     `sent: false` and the tile SAYS nobody is set, rather than reporting a
+     delivery that never happened. */
+  wasteInput: "",
 };
 
 /* Empty until this store knows who its own automations name. The daily sweep
