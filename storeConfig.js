@@ -762,7 +762,7 @@ const CONFIG = {
      costs step 3. */
   financial: {
     feeShare: 0.15,                 // CFA base operating service fee share of sales
-    mileageRate: 0.70,              // dollars per mile, catering reimbursement
+    mileageRate: 0.76,              // dollars per mile, catering reimbursement
     fixedDollarLines: ["Equipment Rent", "Business Service Fee"],
     laborTier: "top20",             // Gate City has historically been measured here
     plannedWage: 18.5,

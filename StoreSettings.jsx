@@ -162,7 +162,7 @@ const FEATURE_FIELDS = [
 
 const FINANCIAL_FIELDS = [
   { path: "financial.feeShare", label: "Service fee share of sales", kind: "num", note: "As a decimal. 15% is 0.15." },
-  { path: "financial.mileageRate", label: "Mileage rate", kind: "num", note: "Dollars per mile. Only prices new claims." },
+  { path: "financial.mileageRate", label: "Mileage rate", kind: "num", note: "The IRS business rate is $0.76 from Jul 1 2026 (it was $0.725 Jan to Jun). At or below the IRS rate this is tax free to the driver; anything above it is taxable wages. Trips already logged keep the rate they were logged at." },
   { path: "financial.goals.food", label: "Food cost goal", kind: "num", note: "As a decimal. 27.56% is 0.2756." },
   { path: "financial.goals.paper", label: "Paper cost goal", kind: "num", note: "As a percent. 3.27 means 3.27%." },
   { path: "financial.paperBand", label: "Paper amber band", kind: "num", note: "How far over goal is still amber rather than red." },
