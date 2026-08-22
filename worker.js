@@ -2087,6 +2087,56 @@ const BACKUP_FETCH_BUDGET = 400;
 const bkSpend = (env) => { env.__backupFetches = (env.__backupFetches || 0) + 1; };
 const bkSpent = (env) => env.__backupFetches || 0;
 
+/* ══════════════════════════════════════════════════════════════════════════
+   ⛔⛔ AND A SECOND BUDGET, ON TIME, BECAUSE THE COUNT ONE GUARDS THE WRONG
+   LIMIT. Added Aug 22 2026 after `backup` was found never to have completed a
+   single run.
+
+   🐛 THE EVIDENCE, read from the live record rather than reasoned:
+
+       gcfcr-job-run-v1:backup
+         lastSkipAt   2026-08-22T07:00:25Z
+         lastSkipWhy  already-ran-today
+
+   **No `at`. No `ok`. No `prevAt`. Only a skip** — and it is the only job in
+   the fleet in that state. `noteJobRun` is awaited BEFORE `confirmRanToday`, so
+   a job that reached the end of the dispatcher would have stamped. It never
+   did, which means the Worker was killed inside `runChain`.
+
+   ⚠️⚠️ AND THE SKIP AT :25 IS THE TELL. The job fires at 3:00am ET, which is
+   07:00 UTC. A second call arrived **25 seconds later**, found the 15-minute
+   lease this run had just written, and was refused. That is the caller timing
+   out and retrying — cron-job.org marks a run failed on a timeout — while the
+   first call was still working.
+
+   ⇒ **THE COUNT BUDGET CANNOT SEE THIS.** 400 was chosen against Cloudflare's
+   1000-subrequest cap, and its own comment says so. Nothing about it knows how
+   long 400 round trips take. With 602 files and an empty bucket, the first run
+   has ~385 copies to make and every one is a fetch from Supabase plus a put to
+   R2 — comfortably past any 30-second caller timeout, every night, forever.
+
+   ★ **A TIME BUDGET IS SELF-TUNING AND A COUNT IS NOT.** Fast files copy more,
+   slow files copy fewer, and the run always ends before the caller gives up.
+   That is the same reasoning `CRON-JOBS.md` already writes down for this job:
+   "a job that moves the whole library every night gets slower every week and
+   eventually times out, which is exactly how `cleaning-summary` died."
+
+   ⚠️ BOTH BUDGETS STAY, AND THEY GUARD DIFFERENT THINGS. The subrequest cap is
+   real and separate; whichever is reached first stops the copying. Dropping the
+   count one would trade a known limit for an unwatched one.
+
+   ⚠️ 20 SECONDS IS MINE, NOT MEASURED AGAINST THE REAL TIMEOUT, which is on the
+   cron account and cannot be read from here — the same honesty the 400 above
+   is labelled with. It is deliberately well under the 30 seconds those callers
+   commonly use, because the stamp, the day marker and the response all still
+   have to fit after it.
+   ⚠️ IT CHANGES NOTHING ELSE. A run that hits it copies what it can, reports
+   `remaining`, and WRITES NO MANIFEST — exactly what the count budget already
+   did. The copy has always been incremental, so the next run continues.
+   ══════════════════════════════════════════════════════════════════════════ */
+const BACKUP_TIME_BUDGET_MS = 20 * 1000;
+const bkOutOfTime = (startedAt) => (Date.now() - startedAt) >= BACKUP_TIME_BUDGET_MS;
+
 const BACKUP_LIST_PAGE = 100;
 /* A runaway guard, not a size limit, matching BACKUP_MAX_ROWS above. */
 const BACKUP_MAX_FILES = 20000;
@@ -2177,7 +2227,11 @@ async function runBackupFiles(env) {
         skipped++; perBucket[bucket].skipped++;
         continue;
       }
-      if (bkSpent(env) >= BACKUP_FETCH_BUDGET) { remaining++; continue; }
+      /* ⚠️ TWO BUDGETS, DIFFERENT LIMITS, EITHER ONE STOPS THE COPYING. The
+         count guards Cloudflare's subrequest cap; the clock guards the caller's
+         timeout, which is what has actually been killing this job. See
+         BACKUP_TIME_BUDGET_MS. */
+      if (bkSpent(env) >= BACKUP_FETCH_BUDGET || bkOutOfTime(startedAt)) { remaining++; continue; }
       bytes += await backupCopyFile(env, bucket, o.name);
       copied++; perBucket[bucket].copied++;
     }
@@ -2190,9 +2244,18 @@ async function runBackupFiles(env) {
      ⚠️ It reports `remaining` instead, which `noteJobRun` already carries into
      the run record, so a store can see it is mid-way rather than finished. */
   if (remaining) {
+    /* ⚠️ THE NOTE NAMES WHICH BUDGET STOPPED IT, because the two mean opposite
+       things to whoever reads the run record. Out of subrequests means the copy
+       is doing its job and the library is simply large; out of TIME means the
+       caller is hanging up mid-run, which is a different problem with a
+       different fix. One sentence for both would send the next reader to the
+       wrong half. */
+    const why = bkSpent(env) >= BACKUP_FETCH_BUDGET
+      ? `subrequest budget spent (${bkSpent(env)} of ${BACKUP_FETCH_BUDGET})`
+      : `time budget spent (${BACKUP_TIME_BUDGET_MS / 1000}s)`;
     return { done: false, copied, skipped, remaining, files: manifest.length, bytes,
              buckets: perBucket, ms: Date.now() - startedAt,
-             note: `subrequest budget spent; ${remaining} file(s) left for the next run` };
+             note: `${why}; ${remaining} file(s) left for the next run` };
   }
 
   /* ⚠️ THE MANIFEST IS WRITTEN LAST, AFTER EVERY COPY HAS LANDED. Written
