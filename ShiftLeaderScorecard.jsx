@@ -809,7 +809,9 @@ const S = {
   roleLbl: { fontFamily: FONT_MONO, fontSize: 10, color: INK3 },
   note: { fontSize: 11.5, color: INK3, marginTop: 8, lineHeight: 1.5 },
   refresh: { border: "none", background: "transparent", color: INDIGO, fontSize: 12, fontWeight: 600, cursor: "pointer", textDecoration: "underline" },
-  eosBar: { display: "flex", alignItems: "center", justifyContent: "space-between", background: cardSurface(), border: `1px solid ${RULE}`, borderRadius: 12, boxShadow: CARD_3D, padding: "9px 12px", marginBottom: 12 },
+  /* ⚠️ This is byte-for-byte `bar` above it apart from the padding, and `bar`
+     has carried the edge all along. Same treatment, same object shape. */
+  eosBar: { display: "flex", alignItems: "center", justifyContent: "space-between", background: cardSurface(), border: `1px solid ${RULE}`, borderRadius: 12, ...accentEdge(ACCENT_NEUTRAL, 3), boxShadow: CARD_3D, padding: "9px 12px", marginBottom: 12 },
 
   /* ── standings rail ── */
   railName: { fontFamily: FONT_DISPLAY, fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },

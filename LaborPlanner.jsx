@@ -1649,7 +1649,18 @@ export default function LaborPlanner() {
        paint a 3px coloured top and left on top of this; without the gradient and
        the shadow underneath, that reads as a hard L on a flat block rather than
        a lit card. Every card on the Planner spreads this one style. */
-    card: { backgroundColor: "#fff", backgroundImage: cardSurface(NAVY, 0.5), border: `1px solid ${LINE}`, borderRadius: 12, padding: 14, marginBottom: 12, boxShadow: CARD_3D },
+    /* ⚠️⚠️ THE ACCENT EDGE LIVES HERE, NOT AT THE CALL SITE, AND THAT IS THE
+       WHOLE POINT. A card is three things: the surface, the shadow and the
+       coloured edge. The first two were shared and the edge was typed by hand at
+       each caller, so two thirds were impossible to forget and one third was
+       forgotten constantly. Nothing is left to remember now, and a caller
+       wanting its own tone still writes borderLeft/borderTop and wins, because
+       its spread comes after.
+       ⛔ IT MUST SIT AFTER `border`, AND MOVING IT ABOVE IS INVISIBLE IN A DIFF.
+       `border` is the shorthand; React applies these in insertion order, so a
+       spread placed above it is overwritten and every card on the screen goes
+       flat again with every check still green. cardEdge.test.mjs grades both. */
+    card: { backgroundColor: "#fff", backgroundImage: cardSurface(NAVY, 0.5), border: `1px solid ${LINE}`, ...accentEdge(NAVY, 3), borderRadius: 12, padding: 14, marginBottom: 12, boxShadow: CARD_3D },
     h1: { fontSize: 20, fontWeight: 800, color: NAVY, margin: 0 },
     sub: { fontSize: 13, color: GRAY, marginTop: 2 },
     smallInput: { fontSize: 16, padding: "6px 8px", border: `1.5px solid ${LINE}`, borderRadius: 8, width: 84, boxSizing: "border-box", textAlign: "right" },
