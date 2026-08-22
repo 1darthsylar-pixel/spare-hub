@@ -2057,7 +2057,15 @@ async function backupReadTable(env, table, order) {
    ⛔ A FAILED LISTING THROWS. Same posture as the table half: a bucket that
    could not be listed must never be written up as "0 objects", because a
    manifest claiming success is worse than no manifest at all. */
-const BACKUP_BUCKETS = ["hr-files", "Receipts", "l101-coursework", "trainer-task-photos", "hub-assets"];
+/* ⚠️⚠️ THIS LIST AND `UPLOAD_BUCKETS` ARE TWO LISTS OF THE SAME THING, KEPT IN
+   STEP BY HAND, AND IT HAS ALREADY DRIFTED. `food-safety-photos` was on the
+   upload list and the security-sweep list and missing from here, so every food
+   safety photo this store took was uploaded and never backed up — silently,
+   with the manifest reporting ok. That is the same shape as the folder bug one
+   floor down: not a cap and not a horizon this time, just a name nobody
+   carried across. `backupBuckets.test.mjs` is the guard, and it reads both
+   lists rather than trusting either. */
+const BACKUP_BUCKETS = ["hr-files", "Receipts", "l101-coursework", "trainer-task-photos", "food-safety-photos", "hub-assets"];
 /* ⛔⛔ CLOUDFLARE COUNTS `fetch` CALLS PER INVOCATION AND KILLS THE WORKER AT
    THE CAP. Measured Aug 21 2026, the first time this job was ever called:
    `Too many subrequests by single Worker invocation`. 595 files is 595 fetches
