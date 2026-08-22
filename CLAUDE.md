@@ -1,5 +1,42 @@
 # SET-THIS-TO-THE-STORE-NAME Hub — project rules
 
+## ✈️ PRE-FLIGHT — run this before you read anything else
+
+```
+npm run doctor
+```
+
+It takes a few seconds and answers the five questions every expensive mistake in
+these repos started by not asking: **which branch am I on, how far behind `main`
+is this copy, is there uncommitted work here, are the packages installed, do the
+tests pass.** It prints `PASS`, or a numbered list of what is wrong with the one
+command that fixes each.
+
+⛔ **IF IT SAYS THIS COPY IS BEHIND `main`, STOP AND PULL BEFORE YOU WRITE
+ANYTHING.** That is not tidiness. The same accident is recorded four times
+across these repos: a session worked confidently against a copy of the tree that
+was not the current one. The cost was never the wasted hour. It was two
+mechanisms for one thing nearly shipping, a handover naming branches that had
+not existed for hours, and a "safe to merge" note on a branch that would have
+deleted five test files.
+
+⚠️ **IT RUNS ITSELF BEFORE `npm test` TOO, AND IT NEVER BLOCKS THERE.** `pretest`
+calls it in `--quick` mode, which prints the same report and always exits 0.
+Refusing to run the tests because the clone is behind would stop the one thing
+that catches bugs, at the moment somebody is trying to catch a bug.
+
+⚠️ **IT READS AND PRINTS. IT CHANGES NOTHING.** No pull, no install, no commit.
+It names the command and leaves it to you.
+
+⚠️ **IT ASKS THIS REPO WHAT ITS TESTS ARE**, from `package.json`'s own `test`
+script, and never holds a list of its own. All five repos answer differently and
+a copy of that answer here would drift (rule 8).
+
+⚠️ **IT CANNOT SEE ANYTHING OUTSIDE THIS REPO** — not Cloudflare, not
+cron-job.org, not Supabase. Same rule as every other fact in this file.
+
+---
+
 ## 🛑 CURRENT HOLDS — read this before touching anything
 
 **No session can see the one before it.** No shared memory exists. This block is
@@ -24,6 +61,113 @@ yet — including the one channel sessions have for talking to each other.
 | Aug 21 | ⏳ **LINEUP AND THE BOARD ENGINE ARE HELD, BY MATT'S OWN INSTRUCTION.** Aug 15 2026: *"Wait on lineup to finish but each store will be very different."* ⇒ Seven files sit in the safe-to-adopt bucket and stay there on purpose: `FOHAutoAssign.js` `SchoolDates.jsx` `jobCodes.js` `scheduleWarnings.js` `shiftMarket.js`, plus `storeRules.test.mjs`, which grades scheduler rules this store does not have. ⛔ **Do not adopt them to make the drift number smaller.** ⭐ **And when Lineup does land here, the five harness drivers land in the SAME job** — Matt, Aug 19 2026: *"port the harness lineup drivers when lineup lands."* | — |
 
 ---
+
+---
+
+### ✅ `npm run drift` — WHAT ONE HUB HAS THAT ANOTHER DOES NOT. Aug 22 2026
+
+**Matt: "A fix lands in one and not the other, silently... This will keep
+happening and there will be a third store."**
+
+```
+npm run drift                    find the sibling repo automatically
+npm run drift -- /path/to/other  say which repo to compare against
+```
+
+⚠️⚠️ **A BYTE COMPARE COULD NEVER HAVE FOUND THE BUG THAT PROMPTED IT.**
+`worker.js` differs between every pair of these repos on every day of the year,
+so "worker.js differs" carries **no signal at all**. A whole missing FUNCTION
+does.
+
+⛔ **IT READS TOP-LEVEL FUNCTION NAMES, NOT EXPORTS, AND THAT IS MEASURED.**
+`worker.js` has exactly **ONE** export and **250** top-level functions. A tool
+comparing exported names would have found nothing in it, ever, and printed "No
+drift" on the one file the whole exercise is about.
+
+⚠️⚠️ **MOVED IS NOT MISSING.** A name is looked for across the WHOLE other repo
+before it is called missing, because a function moved into a leaf module reads
+identically to one that was never ported — and sending somebody to rebuild what
+already exists is how a warning stops being read. ★ It says only what a name
+match can support: *"probably moved, possibly just the same word twice."*
+
+⛔ **A DIFFERENT PRODUCT IS NOT A SIBLING.** A repo counts as a Hub only if it
+carries **most of the shared engine itself**, which tunes off the tool's own
+list rather than a repo-name list that would be wrong at the next store on day
+one.
+
+⚠️ **IT NEVER FAILS THE BUILD.** Drift between two live stores is normal. In
+`npm run doctor` it is a **note, never a problem**. No sibling checked out is
+normal too: it says so and exits 0. Skipped in `--quick`.
+
+⛔ **STORE-SPECIFIC FILES ARE DELIBERATELY ABSENT** from `SHARED_ENGINE` and the
+test asserts ten of them by name. Rosters, seeds, branding and `storeConfig` are
+SUPPOSED to differ.
+
+⚠️ `engineDrift.test.mjs`, 49 assertions, **RUNS** the script against planted
+drift in fake repos. **A drift check is exactly the kind that fails silently:
+its healthy output and its broken output are the same sentence.**
+
+---
+
+### ✅ THE BACKUP HAS A SECOND BUDGET, ON TIME — Aug 22 2026
+
+At the origin store `backup` had **never once completed a run**, and the live
+record held only a skip. Ported here because the cause is not store-specific.
+
+⛔⛔ **`BACKUP_FETCH_BUDGET` COUNTS SUBREQUESTS, WHICH IS CLOUDFLARE'S CEILING.**
+What actually kills a nightly backup is the **CALLER'S CLOCK**, which is a
+different limit: a run can sit far under one and be dead against the other.
+
+⇒ `BACKUP_TIME_BUDGET_MS`, 20 seconds, beside the count budget. **A time budget
+is self-tuning and a count is not**: fast files copy more, slow files fewer, and
+the run always ends before the caller gives up. **Both budgets stay**, and
+whichever is reached first stops the copying.
+
+⚠️ **THE PARTIAL-RUN NOTE NAMES WHICH BUDGET STOPPED IT**, because out of
+subrequests and out of time mean opposite things to whoever reads the record.
+⚠️ **THE 20 SECONDS IS A JUDGEMENT**, not measured against the real timeout,
+which is on the cron account and cannot be read from any repo.
+⚠️ Nothing else moved: a run that hits the budget copies what it can, reports
+`remaining`, and writes **NO manifest**, exactly as the count budget already
+did. The copy has always been incremental.
+
+⚠️ `backupBudget.test.mjs`, 21 assertions, **RUNS** `bkOutOfTime` lifted out of
+this repo's own `worker.js` rather than grepping for the constant. A constant
+nothing reads is a comment.
+
+
+---
+
+### ⭐ A FABLE AUDIT FOUND A BUG IN THE SAME DAY'S WORK — Aug 22 2026
+
+Two of its findings reached this repo and both are fixed here.
+
+⛔ **`npm run drift` SAID "No drift" OVER A REAL GAP.** A name missing from the
+sibling's `worker.js` but present in **any** other file there is classed
+"elsewhere", and when that was the only difference the report printed "No drift"
+and returned **before the moved list rendered**. Reproduced with a fixture.
+⚠️⚠️ **Its healthy output and its blind output were the same sentence**, which
+is the failure mode that tool exists to prevent. Collisions still do not count
+as drift, so `doctor` stays quiet about them; what changed is that the report
+may no longer claim there is nothing to see while it is holding something.
+
+⛔ **THE BACKUP BUDGET TIMED THE WRONG STRETCH.** `runBackupFiles` started its
+**own** clock, after the database dump. The caller times the **whole request**,
+so a long dump left the copy free to spend the full budget on top and the job
+died exactly as diagnosed. ⇒ One deadline, set before the dump.
+⚠️ It also **kept spending after it fired** — `continue`, not `break`, so every
+remaining bucket was still listed and every file still HEADed; a 20-second
+budget produced a **26.7-second run** — and it could name the wrong budget in
+the note, because the listings after a stop push the subrequest count up.
+⚠️ **`remaining` IS A FLOOR NOW AND SAYS SO.** Counting what is left means
+listing it, which is the work the budget just refused. A silent truncation reads
+as "covered everything" when it did not.
+
+⭐⭐ **THE LESSON, AND IT IS THE ONE TO CARRY: BOTH PASSED A GREEN SUITE.** Six
+checks, every test file and a clean build. The guards graded the PARTS and the
+bugs lived in the space between them. **When a guard grades a rule and a wire
+separately, write one that runs the whole path.**
+
 
 ## ⛔⛔ `App.jsx` NEVER INDEXES THE RAW RANK MAP — Aug 19 2026
 
@@ -104,6 +248,103 @@ admin lists. Change it and this store inherits another restaurant's setup.
 | Store Settings | Identity, area owners, features, financial goals. |
 | Push notifications | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. |
 | Scheduled jobs | cron-job.org entries hitting `/api/run-job`. Native Cloudflare Cron Triggers do not deploy on this account. |
+
+---
+
+### 🐛🐛 TAPPING A NOTIFICATION MADE IT VANISH — FIXED Aug 22 2026
+
+**Matt, off a watch photo: "When I open on my phone it disappeared. When opening
+it should take you to the message."**
+
+⛔⛔ **THE TAP NEVER NAVIGATED.** `notificationclick` in `public/sw.js` did
+
+```js
+if (client.url.includes(target) && "focus" in client) return client.focus();
+```
+
+and **every URL contains `/`**. With the target defaulted to `/` the first open
+Hub window matched every single time: the notification closed, an old tab took
+focus, and nothing moved. ⇒ That is exactly "it disappeared".
+
+⚠️⚠️ **AND FOCUS ALONE COULD NOT HAVE WORKED EVEN WITH A REAL TARGET.**
+`App.jsx` reads `?to=` in a `useEffect` with an **empty dependency list**, so it
+fires on MOUNT and never again. Focusing a tab that is already mounted re-runs
+nothing. `client.navigate()` is the whole difference.
+
+★ **`pushTap.test.mjs` RUNS THE REAL HANDLER**, extracted from the shipped
+`sw.js` and driven against fake clients, because a grep cannot tell you whether
+a tap moves. ⚠️ `sw.js` is the one file where a mistake takes the installed app
+down for everybody — its own header says so — which is why it is EXECUTED here
+rather than read.
+
+⚠️ **ITS SENDER-HALF SECTIONS SAY `NOT GRADED` WHERE THIS STORE HAS NO
+`dmPerson` OR NO WATCHDOG.** That is deliberate and it is not a skip: **a test
+that passes on an absence keeps passing on the day the feature arrives without
+its fix**, which is exactly how a clone regresses silently.
+
+---
+
+### ⛔⛔ A FAIL-OPEN ACCESS GATE — FIXED Aug 22 2026
+
+`canSeeProfitShare` and `isDirector` in `finShared.js` let the COERCION do the
+deciding, and `String(["Owner"])` is `"Owner"`. Measured, three shapes cleared a
+gate that guards **pay groups**: `["Owner"]`, `new String("Owner")`, and any
+object whose `toString` returns an allowed role.
+
+⚠️⚠️ **THE ARRAY ONE IS REACHABLE FROM A STORED RECORD.** The Worker reads this
+title out of `gcfcr-hr-roles`, and JSON can hold `{"tm16": ["Owner"]}` — exactly
+the shape a "somebody holds two titles" change would produce.
+
+⇒ `typeof role === "string"` is the whole fix, and **for every real string title
+the answer is byte-identical to before**. `finSharedGate.test.mjs` travels with
+it and was proven here by putting the bug back.
+
+---
+
+### 🐛 THE FOOD SAFETY PHOTOS WERE NEVER BACKED UP — FIXED Aug 22 2026
+
+`food-safety-photos` was on `UPLOAD_BUCKETS`, on the sweep's `STORAGE_BUCKETS`,
+and **missing from `BACKUP_BUCKETS`**. Uploaded fine, swept fine, never backed
+up, manifest reporting `ok`.
+
+⚠️⚠️ **THE RISK WAS MEASURED, NOT ASSUMED.** A bucket listing is deliberately
+NOT wrapped, so a bucket that does not exist takes the whole nightly backup
+down. Read against the live project before writing.
+
+⭐ **`backupBuckets.test.mjs` READS BOTH LISTS out of the real `worker.js`** and
+fails if a bucket the app writes to is not backed up. It reads them rather than
+holding a copy: a third hand-kept list of buckets, living inside the test that
+exists to catch hand-kept lists drifting, would be the joke writing itself.
+
+⚠️ **THIS BACKUP HAS NOW SHIPPED A CONFIDENT MANIFEST OVER MISSING DATA THREE
+TIMES**, each by a different mechanism — a **cap** (an unpaged read saved 1,000
+of 1,379 keys), a **horizon** (a folder-blind listing saved 19 of 602 files) and
+a **list** (a bucket nobody carried across). The first two were fixed in code
+and cannot come back. This one can, every time somebody adds a bucket.
+
+---
+
+### ⭐ THE TILE WORDING TAKES THE TOOL'S OWN COLOUR — Aug 22 2026
+
+**Matt: "The wording on the right for the tools should match in color the tool
+color. It's too much brown."**
+
+The brown was ONE hex, `#B45309`, on every tile that had something to say.
+
+⛔ **AND "JUST USE THE TOOL COLOUR" MAKES SEVERAL TILES UNREADABLE.** Measured
+against the tile face, which is effectively white under `cardSurface`, the
+palest tool colour sits at **1.91:1** — text that is technically present and
+effectively invisible, on the one line whose whole job is to say the store is
+behind. The line is 11.5px, so it gets no large-text allowance either.
+
+⇒ `readableInk` in `heroColor.js` keeps the HUE and darkens only what it must.
+Most colours come back untouched. ⚠️ A flat additive step, the same one `lift`
+uses and for the same reason: scaling toward black desaturates.
+
+⚠️⚠️ **RED STAYS RED, AND THAT IS NOT AN INCONSISTENCY.** `offgoal` is a
+JUDGEMENT about a number and must look the same on every tile or it stops being
+a signal. **The tool colour is identity; red is a verdict, and identity must not
+repaint a verdict.**
 
 ---
 

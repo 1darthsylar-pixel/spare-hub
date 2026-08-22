@@ -2057,7 +2057,15 @@ async function backupReadTable(env, table, order) {
    ⛔ A FAILED LISTING THROWS. Same posture as the table half: a bucket that
    could not be listed must never be written up as "0 objects", because a
    manifest claiming success is worse than no manifest at all. */
-const BACKUP_BUCKETS = ["hr-files", "Receipts", "l101-coursework", "trainer-task-photos", "hub-assets"];
+/* ⚠️⚠️ THIS LIST AND `UPLOAD_BUCKETS` ARE TWO LISTS OF THE SAME THING, KEPT IN
+   STEP BY HAND, AND IT HAS ALREADY DRIFTED. `food-safety-photos` was on the
+   upload list and the security-sweep list and missing from here, so every food
+   safety photo this store took was uploaded and never backed up — silently,
+   with the manifest reporting ok. That is the same shape as the folder bug one
+   floor down: not a cap and not a horizon this time, just a name nobody
+   carried across. `backupBuckets.test.mjs` is the guard, and it reads both
+   lists rather than trusting either. */
+const BACKUP_BUCKETS = ["hr-files", "Receipts", "l101-coursework", "trainer-task-photos", "food-safety-photos", "hub-assets"];
 /* ⛔⛔ CLOUDFLARE COUNTS `fetch` CALLS PER INVOCATION AND KILLS THE WORKER AT
    THE CAP. Measured Aug 21 2026, the first time this job was ever called:
    `Too many subrequests by single Worker invocation`. 595 files is 595 fetches
@@ -2078,6 +2086,73 @@ const BACKUP_BUCKETS = ["hr-files", "Receipts", "l101-coursework", "trainer-task
 const BACKUP_FETCH_BUDGET = 400;
 const bkSpend = (env) => { env.__backupFetches = (env.__backupFetches || 0) + 1; };
 const bkSpent = (env) => env.__backupFetches || 0;
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ⛔⛔ AND A SECOND BUDGET, ON TIME, BECAUSE THE COUNT ONE GUARDS THE WRONG
+   LIMIT. Added Aug 22 2026 after `backup` was found never to have completed a
+   single run.
+
+   🐛 THE EVIDENCE, read from the live record rather than reasoned:
+
+       gcfcr-job-run-v1:backup
+         lastSkipAt   2026-08-22T07:00:25Z
+         lastSkipWhy  already-ran-today
+
+   **No `at`. No `ok`. No `prevAt`. Only a skip** — and it is the only job in
+   the fleet in that state. `noteJobRun` is awaited BEFORE `confirmRanToday`, so
+   a job that reached the end of the dispatcher would have stamped. It never
+   did, which means the Worker was killed inside `runChain`.
+
+   ⚠️⚠️ AND THE SKIP AT :25 IS THE TELL. The job fires at 3:00am ET, which is
+   07:00 UTC. A second call arrived **25 seconds later**, found the 15-minute
+   lease this run had just written, and was refused. That is the caller timing
+   out and retrying — cron-job.org marks a run failed on a timeout — while the
+   first call was still working.
+
+   ⇒ **THE COUNT BUDGET CANNOT SEE THIS.** 400 was chosen against Cloudflare's
+   1000-subrequest cap, and its own comment says so. Nothing about it knows how
+   long 400 round trips take. With 602 files and an empty bucket, the first run
+   has ~385 copies to make and every one is a fetch from Supabase plus a put to
+   R2 — comfortably past any 30-second caller timeout, every night, forever.
+
+   ★ **A TIME BUDGET IS SELF-TUNING AND A COUNT IS NOT.** Fast files copy more,
+   slow files copy fewer, and the run always ends before the caller gives up.
+   That is the same reasoning `CRON-JOBS.md` already writes down for this job:
+   "a job that moves the whole library every night gets slower every week and
+   eventually times out, which is exactly how `cleaning-summary` died."
+
+   ⚠️ BOTH BUDGETS STAY, AND THEY GUARD DIFFERENT THINGS. The subrequest cap is
+   real and separate; whichever is reached first stops the copying. Dropping the
+   count one would trade a known limit for an unwatched one.
+
+   ⚠️ 20 SECONDS IS MINE, NOT MEASURED AGAINST THE REAL TIMEOUT, which is on the
+   cron account and cannot be read from here — the same honesty the 400 above
+   is labelled with. It is deliberately well under the 30 seconds those callers
+   commonly use, because the stamp, the day marker and the response all still
+   have to fit after it.
+   ⚠️ IT CHANGES NOTHING ELSE. A run that hits it copies what it can, reports
+   `remaining`, and WRITES NO MANIFEST — exactly what the count budget already
+   did. The copy has always been incremental, so the next run continues.
+   ══════════════════════════════════════════════════════════════════════════ */
+const BACKUP_TIME_BUDGET_MS = 20 * 1000;
+
+/* ⛔⛔ ONE DEADLINE FOR THE WHOLE REQUEST, AND THE FIRST VERSION GOT THIS WRONG.
+   It took a `startedAt` and `runBackupFiles` passed its OWN, started after the
+   database dump had already finished. But the caller times the WHOLE request:
+   the dump, the file copy, the stamp and the response. So a dump that took ten
+   seconds left the copy free to spend twenty more, and the job died exactly as
+   before with nothing stamped — the budget bounding a stretch the caller was
+   not measuring. Found by a Fable audit the day it shipped.
+
+   ⇒ `bkDeadline` IS SET ONCE, at the top of the job, so every later stage
+   inherits what is LEFT rather than starting again from zero.
+   ⚠️ IT FALLS BACK TO A FRESH DEADLINE if nothing set one, so a caller that
+   reaches the file half on its own is bounded rather than unbounded. */
+const bkStartClock = (env) => { env.__backupDeadline = Date.now() + BACKUP_TIME_BUDGET_MS; };
+const bkOutOfTime = (env) => {
+  if (!env || !env.__backupDeadline) { if (env) bkStartClock(env); return false; }
+  return Date.now() >= env.__backupDeadline;
+};
 
 const BACKUP_LIST_PAGE = 100;
 /* A runaway guard, not a size limit, matching BACKUP_MAX_ROWS above. */
@@ -2155,7 +2230,18 @@ async function runBackupFiles(env) {
   const perBucket = {};
   let copied = 0, skipped = 0, bytes = 0, remaining = 0;
 
+  /* ⛔⛔ ONCE A BUDGET FIRES THE RUN STOPS DOING WORK, and the first version did
+     not. It used `continue`, so every remaining bucket was still fully LISTED
+     (real fetches, one subrequest per page) and every remaining file still got
+     an R2 HEAD. Measured on a harness: a 20-second budget produced a 26.7
+     second run, and the overrun grows with whatever is left — largest exactly
+     when the budget fires. A budget that keeps spending after it is exhausted
+     is not a budget. */
+  let stoppedBy = "";
+  let bucketsNotChecked = 0;
+
   for (const bucket of BACKUP_BUCKETS) {
+    if (stoppedBy) { bucketsNotChecked++; continue; }
     /* ⛔ NOT WRAPPED. A listing that fails takes the whole job down rather than
        producing a manifest that quietly omits a bucket. */
     const objects = await backupListBucket(env, bucket);
@@ -2169,7 +2255,14 @@ async function runBackupFiles(env) {
         skipped++; perBucket[bucket].skipped++;
         continue;
       }
-      if (bkSpent(env) >= BACKUP_FETCH_BUDGET) { remaining++; continue; }
+      /* ⚠️ WHY IS CAPTURED AT THE MOMENT IT FIRES, NOT READ AFTERWARDS. The
+         listing calls above spend subrequests too, so a run stopped by the
+         CLOCK could be pushed past the count budget a moment later and then
+         report "subrequest budget spent" — sending the reader to "the library
+         is large, all is well" when the truth is "the caller is hanging up".
+         That is the precise misdirection this note was added to prevent. */
+      if (bkSpent(env) >= BACKUP_FETCH_BUDGET) { stoppedBy = "count"; remaining++; break; }
+      if (bkOutOfTime(env)) { stoppedBy = "time"; remaining++; break; }
       bytes += await backupCopyFile(env, bucket, o.name);
       copied++; perBucket[bucket].copied++;
     }
@@ -2182,9 +2275,29 @@ async function runBackupFiles(env) {
      ⚠️ It reports `remaining` instead, which `noteJobRun` already carries into
      the run record, so a store can see it is mid-way rather than finished. */
   if (remaining) {
-    return { done: false, copied, skipped, remaining, files: manifest.length, bytes,
+    /* ⚠️ THE NOTE NAMES WHICH BUDGET STOPPED IT, because the two mean opposite
+       things to whoever reads the run record. Out of subrequests means the copy
+       is doing its job and the library is simply large; out of TIME means the
+       caller is hanging up mid-run, which is a different problem with a
+       different fix. One sentence for both would send the next reader to the
+       wrong half. */
+    const why = stoppedBy === "count"
+      ? `subrequest budget spent (${bkSpent(env)} of ${BACKUP_FETCH_BUDGET})`
+      : stoppedBy === "time"
+        ? `time budget spent (${BACKUP_TIME_BUDGET_MS / 1000}s)`
+        : "stopped before the end";
+    /* ⚠️⚠️ `remaining` IS A FLOOR NOW, NOT A COUNT, AND IT SAYS SO. Counting
+       what is left in the buckets we stopped before would mean LISTING them,
+       which is the exact work the budget just refused. A silent truncation
+       reads as "covered everything" when it did not, so the shortfall is
+       named instead. */
+    const more = bucketsNotChecked
+      ? `, plus ${bucketsNotChecked} bucket(s) not looked at yet`
+      : "";
+    return { done: false, copied, skipped, remaining, bucketsNotChecked,
+             files: manifest.length, bytes,
              buckets: perBucket, ms: Date.now() - startedAt,
-             note: `subrequest budget spent; ${remaining} file(s) left for the next run` };
+             note: `${why}; at least ${remaining} file(s) left for the next run${more}` };
   }
 
   /* ⚠️ THE MANIFEST IS WRITTEN LAST, AFTER EVERY COPY HAS LANDED. Written
@@ -2227,6 +2340,10 @@ async function runBackupFiles(env) {
 const backupName = () => `backup-${STORE.fsr}-${isoOfD(nowET())}.json`;
 
 async function runBackup(env) {
+  /* ⛔ THE CLOCK STARTS HERE, BEFORE THE DATABASE DUMP, because the caller
+     times the whole request and not just the file half. See bkOutOfTime. */
+  bkStartClock(env);
+
   /* ⚠️ A REHEARSAL WRITES NOTHING. Same rule every other sender in this file
      follows, and it matters more here: a quiet run that wrote the file would
      overwrite the night's real backup with a test. */

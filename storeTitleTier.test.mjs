@@ -52,8 +52,15 @@ ok("App.jsx was read (control)", APP.length > 100000, String(APP.length));
 const raw = (APP.match(/HR_RANK\[/g) || []).length;
 ok("★★★ App.jsx NEVER INDEXES THE RAW RANK MAP. That map is the built-in ladder only, so a store's own title scores 0 and its holder drops to Team Member.",
   raw === 0, `found ${raw}`);
+/* ⚠️⚠️ IT MATCHES THE NAME INSIDE THE BRACES, NOT THE WHOLE IMPORT LIST. The
+   first version pinned the exact string `import { hrRankOfTitle } from` and
+   went red the day a SECOND name joined that import — `titleOrTier`, so the
+   header could print a person's title instead of their access level — while
+   the lookup this guards was imported perfectly. **A guard that pins a list
+   accuses working code the first time anybody adds to it.** Same shape hit
+   `holidayWiring.test.mjs` on an argument list the same morning. */
 ok("★★ IT IMPORTS THE LOOKUP THAT KNOWS A STORE'S OWN TITLES",
-  /import \{ hrRankOfTitle \} from "\.\/hrRoster\.js"/.test(APP));
+  /^import\s*\{[^}]*\bhrRankOfTitle\b[^}]*\}\s*from\s*"\.\/hrRoster\.js"/m.test(APP));
 
 const calls = (APP.match(/hrRankOfTitle\(/g) || []).length;
 ok(`★★★ AND EVERY PLACE THAT USED TO READ THE MAP NOW CALLS IT — ${calls} call sites`,

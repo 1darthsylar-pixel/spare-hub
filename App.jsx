@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback, useLayoutEffect, useRef, lazy, Suspen
 /* The raised-card look, one definition — see cardStyle.js. It was written out
    13 times in this file and had drifted from the setup cards. */
 import { CARD_3D, accentEdge, cardSurface, cardSurfaceBack, CARD_3D_SOFT } from "./cardStyle.js";
+/* ★ THE TOOL'S OWN COLOUR, DARK ENOUGH TO READ. See `readableInk` — six of the
+   twenty-seven tool colours are below 4.5:1 on a tile face and the palest is
+   1.91, so the raw colour cannot be used directly on 11.5px text. */
+import { readableInk } from "./heroColor.js";
 /* ★ TOOLS LOAD WHEN OPENED, NOT WHEN THE DASHBOARD DOES.
    Matt, Jul 30 2026: "the hub seems a little laggy when opening."
 
@@ -62,7 +66,7 @@ const SupplyCentral = lazy(() => import("./SupplyCentral.jsx"));
 const EquipmentLog = lazy(() => import("./EquipmentLog.jsx"));
 const DailyCleaning = lazy(() => import("./DailyCleaning.jsx"));
 const HRConsole = lazy(() => import("./HRConsole.jsx"));
-import { hrRankOfTitle } from "./hrRoster.js";
+import { hrRankOfTitle, titleOrTier } from "./hrRoster.js";
 import { requiredDeck, trainingKey, trainingRecord, hasWatched } from "./hubTraining.js";
 import { HR_DEFAULT_PIN, loadHRTeam, loadHRTeamResult, isHbExempt } from "./hrTeam.js";
 const CashAudit = lazy(() => import("./CashAudit.jsx"));
@@ -1291,7 +1295,7 @@ const SECTIONS = [
          FinancialSuite. The `desc` still says "profit share" for the people who
          do get it. */
       { id: "financials", name: "Financials", desc: "Sales, labor, food cost, FCR & profit share", tier: 3, allow: ["Payroll", "Director"], Component: FinancialSuite },
-      { id: "scorecard", color: "#13293F", name: "Business Scorecard", desc: "Track goals across all six pillars", tier: 3, allow: ["Director"], Component: BusinessScorecard },
+      { id: "scorecard", color: "#1E3A8A", name: "Business Scorecard", desc: "Track goals across all six pillars", tier: 3, allow: ["Director"], Component: BusinessScorecard },
       // tier 3 → 2 (Jul 27): shift leaders read guest feedback beside their own
       // scoreboard. Editing stays with directors — enforced INSIDE the component
       // via its `tier` prop, not by this registration. Ship both files together:
@@ -1700,8 +1704,23 @@ function Tile({ tool, color, locked, badge, onClick, pinMode, isPinned, onToggle
         <div style={{
           fontSize: (inputStatus && !locked) ? 11.5 : 12,
           fontWeight: (inputStatus && !locked) ? 800 : 400,
+          /* ★★ THE TOOL'S OWN COLOUR, NOT ONE SHARED BROWN. Matt, Aug 22 2026:
+             "The wording on the right for the tools should match in color the
+             tool color. It's too much brown."
+             ⛔ THE BROWN WAS ONE HEX, `#B45309`, ON EVERY TILE THAT HAD
+             SOMETHING TO SAY. A dashboard where several tools want an input
+             read as a wall of one colour rather than as several tools.
+             ⚠️ `readableInk` KEEPS THE HUE AND DARKENS ONLY WHAT IT MUST. Most
+             tool colours come back untouched; the ones that fail 4.5:1 are
+             stepped down until they read. Using the raw colour would put
+             11.5px text at 1.91:1 on the one line whose job is to say the
+             store is behind.
+             ⚠️⚠️ RED STAYS RED, AND THAT IS NOT AN INCONSISTENCY. `offgoal` is
+             a JUDGEMENT about a number, and it has to look the same on every
+             tile or it stops being a signal at all. The tool colour is identity;
+             red is a verdict, and identity must not repaint a verdict. */
           color: (inputStatus && !locked)
-            ? (inputStatus.tone === "offgoal" ? RED : "#B45309")
+            ? (inputStatus.tone === "offgoal" ? RED : readableInk(color))
             : "#6B7280",
           marginTop: 1, lineHeight: 1.35,
           display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 1,
@@ -4693,7 +4712,18 @@ export default function App() {
                 fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
               }}
             >
-              {user ? `${user.name.split(" ")[0]} · ${TIER_NAMES[tier]}` : TIER_NAMES[tier]} · Sign out
+              {/* ⛔⛔ THE TITLE, NOT THE TIER LABEL. This printed
+                  `TIER_NAMES[tier]`, and tier 3's label is the word "Director",
+                  so an Owner, an Executive Director, HR, Accounts Payable,
+                  Payroll and Support all read "Director" here. Matt saw it on
+                  the Village header the morning after he had correctly retitled
+                  himself Support in HR Console: "this should say support."
+                  ⚠️ `TIER_NAMES` is still right where a TIER is what is meant —
+                  what a tool needs and what the PIN card is refusing. This one
+                  line is an identity, and it falls back to the tier label when
+                  a person has no title, which is what it always showed. */}
+              {user ? `${user.name.split(" ")[0]} · ${titleOrTier(user.role, tier, TIER_NAMES)}`
+                    : titleOrTier(null, tier, TIER_NAMES)} · Sign out
             </button>
             </div>
           )}

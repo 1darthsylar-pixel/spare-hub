@@ -158,3 +158,64 @@ export const sheetGradient = (hex) =>
 export const heroInk = (hex) => (isLight(hex)
   ? { ink: "#141821", quiet: "rgba(20,24,33,.72)" }
   : { ink: "#ffffff", quiet: "rgba(255,255,255,.85)" });
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ★★ THE TOOL'S OWN COLOUR, DARK ENOUGH TO READ — Aug 22 2026
+
+   Matt, off a dashboard screenshot: "The wording on the right for the tools
+   should match in color the tool color. It's too much brown."
+
+   ⛔ THE BROWN IS ONE SHARED HEX, `#B45309`, AND THAT IS THE COMPLAINT. Every
+   tile with something to say says it in the same colour, so a dashboard where
+   several tools need an input reads as a wall of brown rather than as several
+   different tools.
+
+   ⚠️⚠️ AND "JUST USE THE TOOL COLOUR" MAKES SIX TILES UNREADABLE. Measured
+   against white, which is what the tile face effectively is under `cardSurface`:
+
+       #B6BCC6   1.91 : 1      #9CA3AF   2.54 : 1
+       #A3ABB6   2.32 : 1      #8A93A0   3.11 : 1
+       #9AA3AE   2.55 : 1      #EA580C   3.56 : 1
+
+   Six of the twenty-seven tool colours are below 4.5:1, and the palest is at
+   1.91 — text that is technically present and effectively invisible, on the
+   one line whose whole job is to tell somebody the store is behind.
+
+   ⇒ SO IT KEEPS THE HUE AND DARKENS UNTIL IT READS. A flat additive step, the
+   same one `lift` uses and for the same reason: scaling toward black
+   desaturates, and the entire point is that the line and the tile are
+   recognisably the same colour.
+
+   ⚠️ A COLOUR THAT ALREADY PASSES IS RETURNED UNTOUCHED, so twenty-one of the
+   twenty-seven tools are byte-identical to what they render today.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ⚠️ 4.5:1 IS THE WCAG AA FLOOR FOR ORDINARY TEXT, and this line is 11.5px, so
+   it does not get to use the large-text allowance. Named rather than typed
+   into the loop, because it is a standard and not a taste. */
+export const READABLE_MIN = 4.5;
+const INK_STEP = 8;
+
+export const contrastOnWhite = (hex) => {
+  const l = relLum(hex);
+  return l == null ? null : (1.05) / (l + 0.05);
+};
+
+export const readableInk = (hex) => {
+  const c = rgb(hex);
+  /* ⚠️ AN UNREADABLE INPUT FALLS BACK TO INK, NOT TO THE BROWN. A colour this
+     cannot parse is a bug somewhere else, and answering with the shared brown
+     would hide it behind the exact look being fixed. */
+  if (!c) return "#111827";
+  let out = c.slice();
+  /* ⚠️ BOUNDED. Sixteen steps of 8 covers the whole channel range, so this
+     cannot spin on a colour that somehow never clears the floor — and black
+     always clears it, so the loop has a real floor to land on. */
+  for (let i = 0; i < 32; i += 1) {
+    const cur = contrastOnWhite(hex6(out));
+    if (cur != null && cur >= READABLE_MIN) break;
+    if (out.every((v) => v <= 0)) break;
+    out = out.map((v) => Math.max(0, v - INK_STEP));
+  }
+  return hex6(out);
+};
