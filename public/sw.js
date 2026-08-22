@@ -181,6 +181,30 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
+/* 🐛🐛 THE TAP USED TO CLOSE THE NOTIFICATION AND MOVE NOTHING. Matt, Aug 22
+   2026, off a watch photo of the scheduled-jobs alert: "When I open on my phone
+   it disappeared. When opening it should take you to the message."
+
+   ⛔⛔ THE OLD LINE WAS `if (client.url.includes(target) && "focus" in client)
+   return client.focus();` and **every URL contains "/"**. With the target
+   defaulted to "/" the first open Hub window matched every single time, so the
+   notification closed, an old tab took focus, and nothing navigated. The
+   message was gone and you were looking at whatever you had been looking at.
+   ⇒ That is exactly "it disappeared".
+
+   ⚠️⚠️ AND FOCUS ALONE COULD NOT HAVE WORKED EVEN WITH A REAL TARGET. `App.jsx`
+   reads `?to=` in a `useEffect` with an EMPTY dependency list, so it fires on
+   MOUNT and never again. Focusing a tab that is already mounted re-runs
+   nothing at all. `client.navigate()` is the whole difference.
+
+   ⚠️ NAVIGATE IS TRIED, NEVER REQUIRED. It is unavailable on some clients and
+   rejects on a cross-origin target; either way the focus below still runs, so
+   the worst case is the old behaviour rather than a dead tap.
+   ⚠️ ONE WINDOW, NEVER A SECOND. `openWindow` only runs when there was nothing
+   to navigate — a notification that spawns a duplicate tab every time is its
+   own complaint.
+   ★ `pushTap.test.mjs` RUNS this handler against fake clients, because a grep
+   cannot tell you whether a tap moves. */
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const target = (event.notification.data && event.notification.data.url) || "/";
@@ -188,7 +212,11 @@ self.addEventListener("notificationclick", (event) => {
     (async () => {
       const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       for (const client of all) {
-        if (client.url.includes(target) && "focus" in client) return client.focus();
+        if (!("focus" in client)) continue;
+        if ("navigate" in client) {
+          try { await client.navigate(target); } catch (e) { /* focus still helps */ }
+        }
+        return client.focus();
       }
       if (self.clients.openWindow) return self.clients.openWindow(target);
     })()
