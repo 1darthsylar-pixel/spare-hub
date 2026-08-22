@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback, useLayoutEffect, useRef, lazy, Suspen
 /* The raised-card look, one definition — see cardStyle.js. It was written out
    13 times in this file and had drifted from the setup cards. */
 import { CARD_3D, accentEdge, cardSurface, cardSurfaceBack, CARD_3D_SOFT } from "./cardStyle.js";
+/* ★ THE TOOL'S OWN COLOUR, DARK ENOUGH TO READ. See `readableInk` — six of the
+   twenty-seven tool colours are below 4.5:1 on a tile face and the palest is
+   1.91, so the raw colour cannot be used directly on 11.5px text. */
+import { readableInk } from "./heroColor.js";
 /* ★ TOOLS LOAD WHEN OPENED, NOT WHEN THE DASHBOARD DOES.
    Matt, Jul 30 2026: "the hub seems a little laggy when opening."
 
@@ -1700,8 +1704,23 @@ function Tile({ tool, color, locked, badge, onClick, pinMode, isPinned, onToggle
         <div style={{
           fontSize: (inputStatus && !locked) ? 11.5 : 12,
           fontWeight: (inputStatus && !locked) ? 800 : 400,
+          /* ★★ THE TOOL'S OWN COLOUR, NOT ONE SHARED BROWN. Matt, Aug 22 2026:
+             "The wording on the right for the tools should match in color the
+             tool color. It's too much brown."
+             ⛔ THE BROWN WAS ONE HEX, `#B45309`, ON EVERY TILE THAT HAD
+             SOMETHING TO SAY. A dashboard where several tools want an input
+             read as a wall of one colour rather than as several tools.
+             ⚠️ `readableInk` KEEPS THE HUE AND DARKENS ONLY WHAT IT MUST. Most
+             tool colours come back untouched; the ones that fail 4.5:1 are
+             stepped down until they read. Using the raw colour would put
+             11.5px text at 1.91:1 on the one line whose job is to say the
+             store is behind.
+             ⚠️⚠️ RED STAYS RED, AND THAT IS NOT AN INCONSISTENCY. `offgoal` is
+             a JUDGEMENT about a number, and it has to look the same on every
+             tile or it stops being a signal at all. The tool colour is identity;
+             red is a verdict, and identity must not repaint a verdict. */
           color: (inputStatus && !locked)
-            ? (inputStatus.tone === "offgoal" ? RED : "#B45309")
+            ? (inputStatus.tone === "offgoal" ? RED : readableInk(color))
             : "#6B7280",
           marginTop: 1, lineHeight: 1.35,
           display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 1,
