@@ -62,6 +62,80 @@ yet — including the one channel sessions have for talking to each other.
 
 ---
 
+---
+
+### ✅ `npm run drift` — WHAT ONE HUB HAS THAT ANOTHER DOES NOT. Aug 22 2026
+
+**Matt: "A fix lands in one and not the other, silently... This will keep
+happening and there will be a third store."**
+
+```
+npm run drift                    find the sibling repo automatically
+npm run drift -- /path/to/other  say which repo to compare against
+```
+
+⚠️⚠️ **A BYTE COMPARE COULD NEVER HAVE FOUND THE BUG THAT PROMPTED IT.**
+`worker.js` differs between every pair of these repos on every day of the year,
+so "worker.js differs" carries **no signal at all**. A whole missing FUNCTION
+does.
+
+⛔ **IT READS TOP-LEVEL FUNCTION NAMES, NOT EXPORTS, AND THAT IS MEASURED.**
+`worker.js` has exactly **ONE** export and **250** top-level functions. A tool
+comparing exported names would have found nothing in it, ever, and printed "No
+drift" on the one file the whole exercise is about.
+
+⚠️⚠️ **MOVED IS NOT MISSING.** A name is looked for across the WHOLE other repo
+before it is called missing, because a function moved into a leaf module reads
+identically to one that was never ported — and sending somebody to rebuild what
+already exists is how a warning stops being read. ★ It says only what a name
+match can support: *"probably moved, possibly just the same word twice."*
+
+⛔ **A DIFFERENT PRODUCT IS NOT A SIBLING.** A repo counts as a Hub only if it
+carries **most of the shared engine itself**, which tunes off the tool's own
+list rather than a repo-name list that would be wrong at the next store on day
+one.
+
+⚠️ **IT NEVER FAILS THE BUILD.** Drift between two live stores is normal. In
+`npm run doctor` it is a **note, never a problem**. No sibling checked out is
+normal too: it says so and exits 0. Skipped in `--quick`.
+
+⛔ **STORE-SPECIFIC FILES ARE DELIBERATELY ABSENT** from `SHARED_ENGINE` and the
+test asserts ten of them by name. Rosters, seeds, branding and `storeConfig` are
+SUPPOSED to differ.
+
+⚠️ `engineDrift.test.mjs`, 49 assertions, **RUNS** the script against planted
+drift in fake repos. **A drift check is exactly the kind that fails silently:
+its healthy output and its broken output are the same sentence.**
+
+---
+
+### ✅ THE BACKUP HAS A SECOND BUDGET, ON TIME — Aug 22 2026
+
+At the origin store `backup` had **never once completed a run**, and the live
+record held only a skip. Ported here because the cause is not store-specific.
+
+⛔⛔ **`BACKUP_FETCH_BUDGET` COUNTS SUBREQUESTS, WHICH IS CLOUDFLARE'S CEILING.**
+What actually kills a nightly backup is the **CALLER'S CLOCK**, which is a
+different limit: a run can sit far under one and be dead against the other.
+
+⇒ `BACKUP_TIME_BUDGET_MS`, 20 seconds, beside the count budget. **A time budget
+is self-tuning and a count is not**: fast files copy more, slow files fewer, and
+the run always ends before the caller gives up. **Both budgets stay**, and
+whichever is reached first stops the copying.
+
+⚠️ **THE PARTIAL-RUN NOTE NAMES WHICH BUDGET STOPPED IT**, because out of
+subrequests and out of time mean opposite things to whoever reads the record.
+⚠️ **THE 20 SECONDS IS A JUDGEMENT**, not measured against the real timeout,
+which is on the cron account and cannot be read from any repo.
+⚠️ Nothing else moved: a run that hits the budget copies what it can, reports
+`remaining`, and writes **NO manifest**, exactly as the count budget already
+did. The copy has always been incremental.
+
+⚠️ `backupBudget.test.mjs`, 21 assertions, **RUNS** `bkOutOfTime` lifted out of
+this repo's own `worker.js` rather than grepping for the constant. A constant
+nothing reads is a comment.
+
+
 ## ⛔⛔ `App.jsx` NEVER INDEXES THE RAW RANK MAP — Aug 19 2026
 
 `HR_RANK_BY_TITLE` is the **built-in ladder only**. `hrRankOfTitle` is that
