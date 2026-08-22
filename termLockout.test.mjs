@@ -182,7 +182,15 @@ group("6. ★★ the hardcoded lists — the half this file used to disclaim");
      ⚠️ ASKED OF THE SEEDS THEMSELVES, not of a store id. A store that has
      people records gets graded on them whoever it is; the origin is not
      special, it is just the one with data today. */
-  const hasPeople = owner.length > 5000 && wseed.length > 5000;
+  /* ⛔⛔ ASK THE CONTENT, NEVER THE FILE SIZE. This was
+     `owner.length > 5000 && wseed.length > 5000`, and a character count
+     standing in for "does this store have people" is a coin toss.
+     🐛 MEASURED Aug 22 2026: a clone's workerSeed.js sat at 4,9xx characters,
+     about ten under the line. Adding one ORDINARY COMMENT to an unrelated
+     config block tipped it over, switched this whole section on at a store
+     with no roster, and turned five correct controls red. Nothing about the
+     data changed. ⇒ A seed has people when it NAMES one. */
+  const hasPeople = /instructorIds:\s*\[\s*"/.test(owner) && /SWEEP_PEOPLE\s*=\s*\[\s*\{/.test(wseed);
   if (!hasPeople) {
     sayNotGraded("this store's own people records",
       "ownerSeed.js and workerSeed.js are the empty twins, so there is no roster to grade.");

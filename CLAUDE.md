@@ -232,6 +232,33 @@ leaving it named.
 
 ---
 
+### ⭐⭐ A MESSAGE MID-BUILD IS A QUEUE ENTRY, NOT A REDIRECT — Aug 22 2026
+
+**Matt, Aug 22 2026: "when I give you things continue the build you are on. My
+intention isn't to disrupt that. When I have ideas or thoughts I'm just trying
+to input them before I forget."** Then: *"Log into memory about not disrupting
+the current build unless something is broken."*
+
+⇒ **FINISH THE THING YOU ARE ON. Then take the next one.** He often prefixes
+these with **"Que-"**, and that is exactly what it means.
+
+**The only three reasons to stop mid-build:**
+
+1. **Something is broken** — a red check, a failing build, a live bug he just
+   reported.
+2. **He says stop**, in those words.
+3. **The new message changes the build you are in the middle of**, so carrying
+   on would produce work that has to be thrown away.
+
+⚠️ **ANYTHING ELSE IS A QUEUE ENTRY.** Acknowledge it in one line so he knows it
+landed, and keep going. Do not re-plan, do not switch files, do not ask which he
+wants first.
+
+⚠️⚠️ **AND THE COST OF GETTING THIS WRONG IS NOT LOST TIME, IT IS A HALF-DONE
+REPO.** These builds touch four repos at once. Abandoning one mid-port leaves
+three stores with a fix and one without, which is the exact drift every other
+rule in this file exists to prevent.
+
 ## Checks before shipping any file
 
 `node checks/run.mjs <files touched>` — all six must be clean. Every one exists

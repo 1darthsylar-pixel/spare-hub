@@ -10,6 +10,7 @@ import {
 /* ★ THE FOUR PERIODS COME FROM THE LEAF. This file and worker.js each had a
    copy; the DM that chases a missing shift reads the same list the tile does. */
 import { WASTE_PERIODS } from "./wasteInputCheck.js";
+import { rangeFor, buildSignalReport, signalMessage } from "./signalReport.js";
 import { STORE } from "./storeConfig.js"; // store name on the donation record
 import { CHANNELS } from "./notify.js";  // the store's own channel names, read late
 
@@ -595,42 +596,53 @@ export default function WasteTracker() {
   // names any day inside it with nothing logged \u2014 a hole in Signal is
   // invisible exactly when nobody wrote anything down.
   const notifySignalDone = async (dk) => {
+    /* ⚠️⚠️ THE RULES ARE IN `signalReport.js`, NOT HERE, AND THAT IS THE POINT.
+       This function lives in a .jsx, which no Node test can import and nothing
+       in `checks/` can execute, so the message a store's ops lead acts on was
+       ungraded for a month. The range, the item roll-up, the holes and the
+       wording are all in the leaf now with 27 assertions on them. */
     const marker = await stGetR(SIGNAL_DONE_KEY);
-    let from = dk;
-    if (marker.ok && marker.value?.lastDoneIso && marker.value.lastDoneIso < dk) {
-      const next = shiftDay(marker.value.lastDoneIso, 1);
-      if (next <= dk) from = next;
-    }
-    const hasEntries = (d) => WASTE_PERIODS.some((p) => Object.keys((data[d] || {})[p] || {}).length > 0);
-    const holes = [];
-    let span = 0;
-    for (let d = from; d <= dk && span < 62; d = shiftDay(d, 1), span++) {
-      if (!hasEntries(d)) holes.push(fmtDate(d));
-      if (d === dk) break;
-    }
-    const range = from < dk ? `${fmtDate(from)} through ${fmtDate(dk)}` : fmtDate(dk);
-    const text =
-      `*Waste input into Signal* \u2014 ${range}\n` +
-      (holes.length ? `No waste logged for: ${holes.slice(0, 8).join(", ")}${holes.length > 8 ? ` +${holes.length - 8} more` : ""}\n` : "") +
-      `Marked done from the ${STORE.appName}.`;
+    const { from, to } = rangeFor(marker.ok ? marker.value : null, dk);
+    /* ⛔ `allItems`, NEVER `menu`. The visible list has had removed items taken
+       out of it, and this report reads more history than anything else in the
+       tile — priced off `menu` a retired item scores zero and its dollars
+       vanish from every past day at once. The scar is written up at `allItems`. */
+    const report = buildSignalReport({ from, to, data, don, allItems, prices, periods: WASTE_PERIODS });
+    const text = signalMessage(report, { date: fmtDate, money: f$, wt: fmtWt, vol: fmtVol },
+      { storeName: STORE.appName });
     try {
       const res = await fetch("/api/slack-notify", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-hub-token": hubToken() },
-        body: JSON.stringify({ to: "owner", text }),
+        /* ★★ A PURPOSE, NOT A PERSON. `wasteInput` is resolved by the Worker
+           from this store's own notify targets, so Gate City reaches its owner
+           and another store reaches whoever they named. A page that chose the
+           recipient is the bug this route already carries a long note about. */
+        body: JSON.stringify({ to: "wasteInput", text }),
       });
-      if (res.ok) {
-        // Marker moves FORWARD only \u2014 re-signaling an old day must not
-        // pull the next range's start backward. Best effort, unawaited: a
-        // missed write only widens the next DM's range, it never loses data.
-        if (!marker.ok || !marker.value?.lastDoneIso || dk > marker.value.lastDoneIso) {
-          stSet(SIGNAL_DONE_KEY, { lastDoneIso: dk, at: new Date().toISOString() });
-        }
-        showToast("Matt notified"); return "ok";
+      if (!res.ok) { showToast("Could not send \u2014 nothing was marked done"); return "fail"; }
+      const out = await res.json().catch(() => ({}));
+      /* ⛔⛔ `res.ok` IS TRUE WHEN NOBODY WAS REACHED, AND THIS USED TO SAY
+         "Matt notified" ANYWAY. An unset recipient answers `sent: false` with a
+         200, so at every store that had not named one the toast reported a
+         delivery that never happened \u2014 and the marker moved, so the next
+         press would not even cover the stretch this one missed. */
+      if (out.sent === false) {
+        showToast("Nobody is set to receive this \u2014 add a name in Store Settings");
+        return "unresolved";
       }
-      showToast("Notify failed"); return "fail";
+      /* The marker moves FORWARD only, and only after somebody was really
+         told. Best effort: a missed write widens the next message's range,
+         it never loses data. */
+      if (!marker.ok || !marker.value?.lastDoneIso || dk > marker.value.lastDoneIso) {
+        stSet(SIGNAL_DONE_KEY, { lastDoneIso: dk, at: new Date().toISOString() });
+      }
+      showToast(report.items.length
+        ? `Sent \u2014 ${report.items.length} item${report.items.length === 1 ? "" : "s"} across ${report.days.length} day${report.days.length === 1 ? "" : "s"}`
+        : "Sent \u2014 nothing was logged in this stretch");
+      return "ok";
     } catch {
-      showToast("Notify failed"); return "fail";
+      showToast("Could not send \u2014 nothing was marked done"); return "fail";
     }
   };
 
@@ -804,7 +816,7 @@ function PricesView({ menu, priceOf, setPrice }) {
           "Cannot set indexed properties on this object".
           This shipped live at the Village on Aug 14 2026 and killed two tiles.
           `styleSpread.test.mjs` fails the build for it. */}
-      <div style={{ background: cardSurface(), boxShadow: CARD_3D, borderRadius:10, padding:"16px 18px", marginBottom:14 }}>
+      <div style={{ background: cardSurface(), boxShadow: CARD_3D, borderRadius:10, padding:"16px 18px", marginBottom:14, ...accentEdge(ACCENT_DEEP, 3) }}>
         <div style={{ fontSize:11, fontFamily:MONO, letterSpacing:.5, color:INK_DIM, textTransform:"uppercase", fontWeight:700 }}>Item costs</div>
         <div style={{ fontSize:26, fontWeight:800, color: missing.length ? ACCENT : INK, letterSpacing:-.5, marginTop:4 }}>
           {missing.length === 0 ? "All items priced" : `${missing.length} still need a price`}
@@ -900,14 +912,16 @@ function EntryView({ date, setDate, period, setPeriod, filtered, getQty, bump, s
     setSignaling(false);
   };
 
-  // One tap for the whole close-out: post today's log to #inventory-management,
-  // then notify Matt that Signal input is done. If nothing's logged, the post
-  // step says so and we still send the "done" ping.
+  /* ⛔ THE SLACK CHANNEL POST IS GONE FROM THIS BUTTON. Matt, Aug 22 2026:
+     "Drop it but i want to know what date range and items were input in signal."
+     It used to post the day's log to the Inventory channel AND ping one person.
+     The DM now carries the range and the items itself, so the channel copy was
+     saying less than the message beside it while ringing a whole room.
+     ⚠️ `postDailyToSlack` IS UNTOUCHED AND STILL WORKS \u2014 it simply has no
+     caller on this screen any more. Deleting it is a separate decision about a
+     daily record, not a side effect of changing one button. */
   const handleSignalComplete = async () => {
-    if (posting || signaling) return;
-    setPosting(true);
-    await postDailyToSlack(date);
-    setPosting(false);
+    if (signaling) return;
     setSignaling(true);
     await notifySignalDone(date);
     setSignaling(false);
@@ -974,9 +988,9 @@ function EntryView({ date, setDate, period, setPeriod, filtered, getQty, bump, s
 
         {/* One button: posts today's log to #inventory-management AND notifies
             Matt that Signal input is done. Runs both actions in sequence. */}
-        <button onClick={handleSignalComplete} disabled={posting || signaling}
-          style={{ width:"100%", marginTop:10, background:(posting||signaling)?ACCENT_WASH:ACCENT_DEEP, color:(posting||signaling)?ACCENT_DEEP:PAPER, border:`1px solid ${ACCENT_DEEP}`, borderRadius:8, padding:"12px 12px", fontSize:13, fontWeight:800, cursor:(posting||signaling)?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, fontFamily:MONO, letterSpacing:.3, opacity:(posting||signaling)?0.8:1 }}>
-          <Icon.Send size={13} /> {(posting || signaling) ? "Working\u2026" : "Signal input is complete"}
+        <button onClick={handleSignalComplete} disabled={signaling}
+          style={{ width:"100%", marginTop:10, background:signaling?ACCENT_WASH:ACCENT_DEEP, color:signaling?ACCENT_DEEP:PAPER, border:`1px solid ${ACCENT_DEEP}`, ...accentEdge(ACCENT_DEEP, 3), boxShadow:CARD_3D, borderRadius:8, padding:"12px 12px", fontSize:13, fontWeight:800, cursor:signaling?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, fontFamily:MONO, letterSpacing:.3, opacity:signaling?0.8:1 }}>
+          <Icon.Send size={13} /> {signaling ? "Sending\u2026" : "Signal input is complete"}
         </button>
       </div>
       <div className="gc-zz" style={{ marginBottom:2 }} />
@@ -1185,7 +1199,7 @@ function EntryView({ date, setDate, period, setPeriod, filtered, getQty, bump, s
       </div>
       {manage && removedItems.length > 0 && (
         <div style={{ padding:"0 12px 28px" }}>
-          <div style={{ background:cardSurface(), boxShadow:CARD_3D, border:`1px solid ${LINE}`, borderRadius:9, padding:"12px 14px" }}>
+          <div style={{ background:cardSurface(), boxShadow:CARD_3D, border:`1px solid ${LINE}`, borderRadius:9, padding:"12px 14px", ...accentEdge(ACCENT_DEEP, 3) }}>
             <div style={{ fontSize:12, fontWeight:800, color:INK, marginBottom:8, fontFamily:MONO, letterSpacing:.3 }}>REMOVED ITEMS ({removedItems.length})</div>
             {removedItems.map(item => (
               <div key={item.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"6px 2px", borderBottom:`1px solid ${LINE}` }}>
@@ -1505,7 +1519,7 @@ function DashboardView({ dashDate, setDashDate, data, don, menu, periodTotal, pe
       {mode === "day" ? (
         <>
           {/* Date selector */}
-          <div style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"12px 14px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between", border:`1px solid ${LINE}` }}>
+          <div style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"12px 14px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between", border:`1px solid ${LINE}`, ...accentEdge(ACCENT_DEEP, 3) }}>
             <div>
               <div style={{ fontSize:10, color:INK_DIM, fontWeight:700, textTransform:"uppercase", letterSpacing:.5, fontFamily:MONO }}>Date</div>
               <div style={{ fontWeight:700, fontSize:15, color:INK }}>{fmtDate(dashDate)}</div>
@@ -1585,7 +1599,7 @@ function DashboardView({ dashDate, setDashDate, data, don, menu, periodTotal, pe
             const bdCount = bd.reduce((s, b) => s + b.qty, 0);
             const pieBd = bd.filter(b => b.value > 0);
             return (
-              <div key={p} style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"14px", marginBottom:12, border:`1px solid ${LINE}` }}>
+              <div key={p} style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"14px", marginBottom:12, border:`1px solid ${LINE}`, ...accentEdge(ACCENT_DEEP, 3) }}>
                 <div style={{ fontSize:12, fontWeight:700, color:INK, marginBottom:8, background:ACCENT_WASH, padding:"6px 10px", borderRadius:6, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                   <span>{p} — by Product</span>
                   <span style={{ color:PCOLOR[p], fontWeight:800, fontFamily:MONO }}>{f$(bdTotal)} · {bdCount} ea</span>
@@ -1653,7 +1667,7 @@ function DashboardView({ dashDate, setDashDate, data, don, menu, periodTotal, pe
       ) : (
         <>
           {/* Range selector */}
-          <div style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"12px 14px", marginBottom:10, border:`1px solid ${LINE}` }}>
+          <div style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"12px 14px", marginBottom:10, border:`1px solid ${LINE}`, ...accentEdge(ACCENT_DEEP, 3) }}>
             <div style={{ fontSize:10, color:INK_DIM, fontWeight:700, textTransform:"uppercase", letterSpacing:.5, fontFamily:MONO, marginBottom:8 }}>Date Range</div>
             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
               <input type="date" value={rStart} max={rEnd} onChange={e => setRStart(e.target.value)}
@@ -1690,7 +1704,7 @@ function DashboardView({ dashDate, setDashDate, data, don, menu, periodTotal, pe
           </div>
 
           {/* Itemized aggregate */}
-          <div style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"14px", marginBottom:12, border:`1px solid ${LINE}` }}>
+          <div style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"14px", marginBottom:12, border:`1px solid ${LINE}`, ...accentEdge(ACCENT_DEEP, 3) }}>
             <div style={{ fontSize:12, fontWeight:700, color:INK, marginBottom:8, background:ACCENT_WASH, padding:"6px 10px", borderRadius:6, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <span>All Items — {fmtDate(rStart)} to {fmtDate(rEnd)}</span>
               <span style={{ color:ACCENT, fontWeight:800, fontFamily:MONO }}>{f$(rangeTotal)}</span>
@@ -1754,7 +1768,7 @@ function Chip({ label, sub }) {
 
 function DashCard({ title, children }) {
   return (
-    <div style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"14px", marginBottom:12, border:`1px solid ${LINE}` }}>
+    <div style={{ background:cardSurface(), boxShadow:CARD_3D, borderRadius:9, padding:"14px", marginBottom:12, border:`1px solid ${LINE}`, ...accentEdge(ACCENT_DEEP, 3) }}>
       <div style={{ fontSize:12, fontWeight:700, color:INK, marginBottom:10, background:ACCENT_WASH, padding:"6px 10px", borderRadius:6 }}>{title}</div>
       {children}
     </div>
