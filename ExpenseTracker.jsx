@@ -41,7 +41,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 /* The shared raised look and accent edge — see cardStyle.js. */
-import { CARD_3D, accentEdge, ACCENT_NEUTRAL } from "./cardStyle.js";
+import { CARD_3D, cardSurface, accentEdge, ACCENT_NEUTRAL } from "./cardStyle.js";
 import { hubToken, kvSet, kvGetResult } from "./store";
 import MonthYearPicker from "./MonthYearPicker.jsx";
 import { DEFAULT_EXPENSE_CATEGORIES, EXPENSE_GROUPS } from "./expenseDefaults.js";
@@ -456,7 +456,14 @@ export default function ExpenseTracker() {
   /* ---- styles ---- */
   const S = {
     page: { fontFamily: "Inter, -apple-system, sans-serif", background: BG, minHeight: "100vh", padding: 14, color: INK },
-    card: { background: "#fff", border: `1px solid ${LINE}`, ...accentEdge(ACCENT_NEUTRAL, 3), borderRadius: 12, padding: 14, marginBottom: 12, boxShadow: CARD_3D },
+    /* ⚠️ THE THIRD PART OF THE TREATMENT, AND IT WAS THE LAST ONE MISSING. This
+       card had the shadow and the edge and painted FLAT WHITE, so Expenses read
+       plainer than Sales, Labor and Food Cost sitting beside it. Same tint as
+       its own edge, which is how every other money screen does it.
+       ⚠️ `backgroundColor` UNDERNEATH IS NOT DECORATION — cardSurface fades to
+       fully transparent on purpose, so without solid white beneath it the page
+       grey shows through the falloff. */
+    card: { backgroundColor: "#fff", backgroundImage: cardSurface(ACCENT_NEUTRAL, 0.5), border: `1px solid ${LINE}`, ...accentEdge(ACCENT_NEUTRAL, 3), borderRadius: 12, padding: 14, marginBottom: 12, boxShadow: CARD_3D },
     h1: { fontSize: 20, fontWeight: 800, color: NAVY, margin: 0 },
     sub: { fontSize: 13, color: GRAY, marginTop: 2 },
     btn: (bg) => ({ fontSize: 14, fontWeight: 700, padding: "9px 13px", borderRadius: 9, border: "none", background: bg, color: "#fff", cursor: "pointer" }),

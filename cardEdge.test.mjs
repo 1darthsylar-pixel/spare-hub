@@ -28,11 +28,19 @@
    the 11 already complied, so this is the house style being held rather than a
    preference being introduced.
 
-   ⚠️ IT KEYS ON `cardSurface(`, AND THAT IS WHAT KEEPS IT OFF THINGS THAT ARE
-   NOT CARDS. HRConsole's `modal` and `toast` both carry a shadow, padding and a
-   radius, and neither is a card — they paint a flat colour, so they fall out on
-   their own rather than by being named here. A rule that needed an exceptions
-   list would rot the first time somebody added a twelfth object.
+   ⭐ AND IT GRADES ALL THREE PARTS, BECAUSE THE THIRD WAS BEING FORGOTTEN TOO.
+   Widening it from the edge alone to the whole treatment found `ExpenseTracker`
+   raising and edging a card that painted FLAT WHITE, so Expenses read plainer
+   than Sales, Labor and Food Cost sitting beside it. One screen, in all four
+   repos, and nobody had reported it.
+
+   ⚠️ AN OBJECT IS A CARD IF IT IS RAISED AND PADDED AND ROUNDED **AND** CARRIES
+   EITHER THE SURFACE OR THE EDGE. Keying on the surface alone could never have
+   caught the Expenses card, because the thing it was missing was the key.
+   ⇒ Either mark selects it, then all three are required. HRConsole's `modal` and
+   `toast` carry a shadow, padding and a radius and NEITHER mark, so they fall
+   out on their own rather than by being named here. A rule needing an
+   exceptions list would rot the first time somebody added another object.
 
    ⚠️⚠️ AND IT CANNOT SEE A CARD WRITTEN INLINE, ON PURPOSE. flatCards reads the
    `<div` line; this one reads the shared object, which is the exact blind spot
@@ -56,14 +64,18 @@ function scan(src) {
   const out = [];
   for (const m of src.matchAll(OBJ)) {
     const body = m[0];
-    if (!/cardSurface\(/.test(body)) continue;                 // it is a card SURFACE, not a flat panel
-    if (!/boxShadow|CARD_3D/.test(body)) continue;             // and it is RAISED
+    if (!/boxShadow|CARD_3D/.test(body)) continue;             // it is RAISED
     if (!/padding\s*:/.test(body) || !/borderRadius\s*:/.test(body)) continue;
     const edgeAt = body.search(/\.\.\.accentEdge\(|borderLeft\s*:/);
+    const hasSurface = /cardSurface\(/.test(body);
+    /* ⚠️ EITHER MARK SELECTS IT. Requiring the surface to select would have made
+       the missing surface unfindable, which is exactly how it survived. */
+    if (!hasSurface && edgeAt === -1) continue;
     const borderAt = body.search(/[,{]\s*border\s*:/);
     out.push({
       name: m[1],
       line: src.slice(0, m.index).split("\n").length,
+      hasSurface,
       hasEdge: edgeAt !== -1,
       /* ⛔ THE ORDER IS LOAD-BEARING AND A DIFF CANNOT SHOW IT. `border` is the
          shorthand and React applies these in insertion order, so an edge spread
@@ -89,8 +101,15 @@ console.log("\n── 0. controls — the scan reads, fires, and knows what is n
   t("★★ the edge ABOVE the border shorthand is caught as out of order",
     scan(`  card: { backgroundImage: cardSurface(), ...accentEdge(NAVY, 3), border: \`1px solid x\`, ${tail} },`)
       .every((c) => c.hasEdge && !c.orderOk));
-  t("★ a flat-coloured modal is not a card (no cardSurface)",
+  t("★★ raised and edged but painting a FLAT colour is flagged — the Expenses fault",
+    (() => {
+      const r = scan('  card: { background: "#fff", border: `1px solid x`, ...accentEdge(NEUT, 3), borderRadius: 12, padding: 14, boxShadow: CARD_3D },');
+      return r.length === 1 && r[0].hasEdge && !r[0].hasSurface;
+    })());
+  t("★ a flat-coloured modal is not a card (neither mark)",
     scan('  modal: { background: "#FFFFFF", borderRadius: 14, padding: 20, boxShadow: "0 16px 40px rgba(15,23,42,0.3)" },').length === 0);
+  t("★ a dark toast is not a card either (neither mark)",
+    scan('  toast: { background: "#14243D", color: "#fff", padding: "9px 20px", borderRadius: 8, boxShadow: "0 4px 18px rgba(0,0,0,0.3)" },').length === 0);
   t("★ an unraised panel is not graded (no shadow)",
     scan(`  panel: { ${surf}, borderRadius: 12, padding: 14 },`).length === 0);
   t("★ a bare style bag is not a card (no padding, no radius)",
@@ -110,14 +129,15 @@ console.log("\n── 1. ★★ every shared card object carries the whole treat
   for (const f of files) {
     for (const c of scan(readFileSync(new URL(`./${f}`, import.meta.url), "utf8"))) {
       graded += 1;
-      if (!c.hasEdge) t(`★★ ${f}:${c.line} \`${c.name}\` paints a raised card surface with no accent edge`, false);
+      if (!c.hasSurface) t(`★★ ${f}:${c.line} \`${c.name}\` is a raised card painting a FLAT colour, not the card surface`, false);
+      else if (!c.hasEdge) t(`★★ ${f}:${c.line} \`${c.name}\` paints a raised card surface with no accent edge`, false);
       else if (!c.orderOk) t(`★★ ${f}:${c.line} \`${c.name}\` spreads its edge ABOVE \`border\`, so the shorthand wins`, false);
     }
   }
   /* ⚠️ THE COUNT CONTROL. Eleven the day this was written. A floor rather than
      an exact number, because adding a twelfth card is ordinary work and a count
      that has to be hand-edited is a count that will accuse working code. */
-  t(`★ and it really found card objects to grade (control) — ${graded}`, graded >= 9, graded);
+  t(`★ and it really found card objects to grade (control) — ${graded}`, graded >= 10, graded);
 }
 
 console.log(`\n${fails.length ? `${fails.length} FAILED, ` : ""}${pass} passed`);

@@ -125,6 +125,24 @@ shorthand and React applies inline styles in **insertion order**, so an edge
 spread moved ABOVE it is overwritten and **every card on the screen goes flat
 again with all six checks green.**
 
+⭐⭐ **AND WIDENING THE GUARD FOUND THE THIRD PART BEING FORGOTTEN TOO.** A card
+is **surface, shadow and edge**. With two of them held, the obvious next question
+was whether anything was raised and edged but painting a **flat colour** — and
+`ExpenseTracker`'s `S.card` was, in all four repos. So Expenses read plainer than
+Sales, Labor and Food Cost sitting beside it, and nobody had reported it.
+
+⚠️⚠️ **THE SELECTION RULE HAD TO CHANGE TO SEE IT, AND THAT IS THE LESSON.** The
+first `cardEdge` keyed on `cardSurface(` to decide "this is a card". **A card
+missing the surface could never be selected by a key that IS the surface**, which
+is exactly how it survived. ⇒ An object is a card if it is raised, padded and
+rounded **and carries EITHER mark**; then all three are required. `modal` and
+`toast` carry neither, so they still fall out on their own rather than by being
+named in an exceptions list.
+
+⚠️ **`backgroundColor` UNDER `backgroundImage` IS NOT DECORATION.** `cardSurface`
+fades to fully transparent on purpose, so without solid white beneath it the page
+grey shows through the falloff.
+
 ⭐ `cardEdge.test.mjs` grades the order as well as the presence, both arms proven
 by breaking the real code. ⚠️ **It does not replace `flatCards.test.mjs` and must
 not be merged into it** — that one reads the `<div` line, and `<div
