@@ -951,7 +951,7 @@ export default function EquipmentLog({ tier }) {
 
           {/* RECENT SUBMITTED LOGS (shared across team) */}
           {recent.length > 0 && (
-            <div style={{ marginTop: 14, background: cardSurface(), borderRadius: 12, boxShadow: CARD_3D, border: "1px solid #D1D5DB", padding: "14px 16px" }}>
+            <div style={{ marginTop: 14, background: cardSurface(), borderRadius: 12, ...accentEdge(ACCENT_NEUTRAL, 3), boxShadow: CARD_3D, border: "1px solid #D1D5DB", padding: "14px 16px" }}>
               <div style={labelStyle}>Recent Submitted Logs</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {recentSorted.map((r, i) => {
