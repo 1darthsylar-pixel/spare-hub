@@ -1,5 +1,42 @@
 # SET-THIS-TO-THE-STORE-NAME Hub — project rules
 
+## ✈️ PRE-FLIGHT — run this before you read anything else
+
+```
+npm run doctor
+```
+
+It takes a few seconds and answers the five questions every expensive mistake in
+these repos started by not asking: **which branch am I on, how far behind `main`
+is this copy, is there uncommitted work here, are the packages installed, do the
+tests pass.** It prints `PASS`, or a numbered list of what is wrong with the one
+command that fixes each.
+
+⛔ **IF IT SAYS THIS COPY IS BEHIND `main`, STOP AND PULL BEFORE YOU WRITE
+ANYTHING.** That is not tidiness. The same accident is recorded four times
+across these repos: a session worked confidently against a copy of the tree that
+was not the current one. The cost was never the wasted hour. It was two
+mechanisms for one thing nearly shipping, a handover naming branches that had
+not existed for hours, and a "safe to merge" note on a branch that would have
+deleted five test files.
+
+⚠️ **IT RUNS ITSELF BEFORE `npm test` TOO, AND IT NEVER BLOCKS THERE.** `pretest`
+calls it in `--quick` mode, which prints the same report and always exits 0.
+Refusing to run the tests because the clone is behind would stop the one thing
+that catches bugs, at the moment somebody is trying to catch a bug.
+
+⚠️ **IT READS AND PRINTS. IT CHANGES NOTHING.** No pull, no install, no commit.
+It names the command and leaves it to you.
+
+⚠️ **IT ASKS THIS REPO WHAT ITS TESTS ARE**, from `package.json`'s own `test`
+script, and never holds a list of its own. All five repos answer differently and
+a copy of that answer here would drift (rule 8).
+
+⚠️ **IT CANNOT SEE ANYTHING OUTSIDE THIS REPO** — not Cloudflare, not
+cron-job.org, not Supabase. Same rule as every other fact in this file.
+
+---
+
 ## 🛑 CURRENT HOLDS — read this before touching anything
 
 **No session can see the one before it.** No shared memory exists. This block is

@@ -4,6 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "doctor": "node scripts/doctor.mjs",
+    "pretest": "node scripts/doctor.mjs --quick",
+    "test": "node checks/run.mjs",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
