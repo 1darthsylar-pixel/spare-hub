@@ -852,13 +852,6 @@ function Icon({ id, color, size = 22 }) {
       </>
     ),
     /* A clipboard with a tick: the shift leader's scorecard. */
-    shiftleader: (
-      <>
-        <path d="M9 4.5H7A1.5 1.5 0 0 0 5.5 6v13A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V6A1.5 1.5 0 0 0 17 4.5h-2" />
-        <path d="M9 3.5h6v3H9z" />
-        <path d="M9 13l2 2 4-4" />
-      </>
-    ),
     /* A cog: store settings. */
     storesettings: (
       <>
@@ -876,7 +869,17 @@ function Icon({ id, color, size = 22 }) {
         <path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21.4 8 14 2 9.4h7.6z" />
       </>
     ),
-      shiftleader: (
+    /* A ticked box: the shift leader's scorecard.
+       🐛 `shiftleader` WAS IN THIS OBJECT TWICE, ~20 lines apart, and Vite
+       warned on every boot. The later one wins in a JavaScript object literal,
+       so the clipboard-with-a-tick written above was DEAD CODE and these paths
+       are what the tile has actually been rendering.
+       ⚠️ THE LIVE PATHS WERE KEPT ON PURPOSE, not the dead ones. Deleting the
+       duplicate the other way round would have silently changed a tile icon for
+       everybody, which is a visible change dressed up as a lint fix. The
+       clipboard version is in this file's history if it is ever wanted back.
+       Graded by dupKeys.test.mjs. */
+    shiftleader: (
       <>
         <path d="M9 11l3 3L22 4" />
         <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
