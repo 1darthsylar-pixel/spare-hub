@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Plus, Trash2, Pencil, Check, TrendingDown, TrendingUp, ChevronLeft, ChevronRight, RefreshCw, Printer } from "lucide-react";
 import { kvGet, kvSet, publishSharedRows, uploadDoc, signedDocUrl, deleteDoc, hubToken } from "./store.js"; // EOS scorecard publish + safe-entry mirror for the change-fund worker; CashAudit's own ledger stays on window.storage. uploadDoc/signedDocUrl are for receipt photos (PRIVATE `Receipts` bucket).
+/* ★ WHAT A CLAIM IS WORTH LIVES IN A LEAF NOW — mileagePay.js. The maths was
+   in this file, which no Node test can import and nothing in checks/ can
+   execute, so the one function deciding what a person is PAID was graded by
+   nothing. Moving it found two live bugs; see mileagePay.js. */
+import { mileageMiles, entryPay, monthPay, odometerPay } from "./mileagePay.js";
 import { eosPeriod } from "./eosPeriod.js";
 import { seatById } from "./orgSeats.js"; // display names follow the seat table, never a hardcoded person
 import { storeCfg, programLabel, cashierNames, STORE } from "./storeConfig.js"; // the mileage rate and the programme name, both read at use time so a saved value takes effect
@@ -329,7 +334,17 @@ function emptyReceipt(who) {
 }
 
 function emptyMileage() {
-  return { id: uid(), date: todayISO(), name: "", startMiles: "", endMiles: "", reason: "" };
+  /* ⛔⛔ THE RATE IS STAMPED HERE, AT CREATE TIME, AND NEVER MOVES AGAIN.
+     Matt, Aug 22 2026: "changing the rate silently re-prices every past claim,
+     including months already paid and printed." It did. No rate was stored, so
+     all three money sites multiplied miles by whatever the settings box said at
+     the moment the screen rendered.
+     ⚠️ NOTHING IS BACKFILLED. A trip with no rate was logged before we tracked
+     this and keeps using the current setting, exactly as it always did. Writing
+     a rate onto an old row would be inventing a fact about what somebody was
+     paid, which is the surgical edit the money rules forbid. */
+  return { id: uid(), date: todayISO(), name: "", startMiles: "", endMiles: "", reason: "",
+    rate: mileageRate() };
 }
 
 function emptyOrder() {
@@ -340,12 +355,6 @@ function emptyOrder() {
 
 function orderTotal(entry) {
   return ORDER_ITEMS.reduce((sum, d) => sum + (Number(entry[d.key]) || 0) * d.value, 0);
-}
-
-function mileageMiles(e) {
-  const s = Number(e.startMiles), en = Number(e.endMiles);
-  if (!isFinite(s) || !isFinite(en) || en < s) return 0;
-  return en - s;
 }
 
 function hasCountedEntry(form) {
@@ -1129,8 +1138,11 @@ export default function CashAudit({ user: userProp, tier = 1 }) {
     [mileageEntries, mileageMonth]
   );
   const mileageTotals = useMemo(() => {
-    const miles = mileageForMonth.reduce((s, e) => s + mileageMiles(e), 0);
-    return { miles, reimbursement: miles * mileageRate() };
+    /* ⛔ EACH ROW AT ITS OWN RATE, never the month's miles times one number. A
+       month spanning a rate change totals correctly and `mixed` says so, because
+       dividing the total back out would name a blended rate nobody set. */
+    const m = monthPay(mileageForMonth, mileageRate());
+    return { miles: m.miles, reimbursement: m.amount, rate: m.rate, rates: m.rates, mixed: m.mixed };
   }, [mileageForMonth]);
 
   // ── ODOMETER RECONCILIATION ──────────────────────────────────────────────
@@ -1203,7 +1215,13 @@ export default function CashAudit({ user: userProp, tier = 1 }) {
   const payable = useMemo(() => {
     const useOdo = odoStats.travelled !== null && !odoStats.backwards;
     const miles = useOdo ? odoStats.travelled : mileageTotals.miles;
-    return { miles, amount: miles * mileageRate(), basis: useOdo ? "odometer" : "trips" };
+    /* ⚠️ THE ODOMETER HAS NO TRIP AND SO NO RATE OF ITS OWN. It borrows the
+       newest rated trip in the month and only falls to the settings box when no
+       trip has one. Going straight to the box would re-price a closed month the
+       moment somebody edited it, which is the whole bug. `rateFrom` says which. */
+    const od = odometerPay(miles, mileageForMonth, mileageRate());
+    return { miles, amount: useOdo ? od.amount : mileageTotals.reimbursement,
+      rate: od.rate, rateFrom: od.rateFrom, basis: useOdo ? "odometer" : "trips" };
   }, [odoStats, mileageTotals.miles]);
 
   function handlePrint() { window.print(); }
@@ -2068,7 +2086,7 @@ export default function CashAudit({ user: userProp, tier = 1 }) {
 
   function MileageScreen() {
     const miles = mileageMiles(mileageForm);
-    const reimb = miles * mileageRate();
+    const reimb = entryPay(mileageForm, mileageRate()).amount;
     // Same rule as the Receipts screen: Cindy reconciles (role "Payroll"), and
     // directors can too. Everyone else logs trips and reads the odometer panel
     // without being able to change the readings the reconciliation rests on.
@@ -2137,7 +2155,7 @@ export default function CashAudit({ user: userProp, tier = 1 }) {
               <div className="led-number" style={{ color: TEXT, fontSize: "1.5rem" }}>{miles.toFixed(1)}</div>
             </div>
             <div className="text-right">
-              <div className="eyebrow">Reimbursement &middot; ${mileageRate().toFixed(2)}/mi</div>
+              <div className="eyebrow">Reimbursement &middot; ${(entryPay(mileageForm, mileageRate()).rate ?? mileageRate()).toFixed(2)}/mi</div>
               <div className="led-number" style={{ color: AMBER, fontSize: "1.5rem" }}>{money(reimb)}</div>
             </div>
           </div>
@@ -2257,7 +2275,10 @@ export default function CashAudit({ user: userProp, tier = 1 }) {
               <div className="eyebrow">Mileage payment &middot; {monthLabel(mileageMonth)}</div>
               <div className="text-xs" style={{ color: MUTED, marginTop: 2 }}>
                 {payable.basis === "odometer"
-                  ? `${payable.miles.toFixed(1)} miles on the odometer, at $${mileageRate().toFixed(2)}/mile`
+                  ? /* ⚠️ THE RATE THAT PRICED IT, NOT THE SETTINGS BOX. The odometer borrows
+                       the newest logged trip's rate, so printing the settings box
+                       here would explain a total it did not produce. */
+                    `${payable.miles.toFixed(1)} miles on the odometer, at $${(payable.rate ?? mileageRate()).toFixed(2)}/mile${payable.rateFrom === "setting" ? " (the current setting — no trip this month carries a rate)" : ""}`
                   : `${payable.miles.toFixed(1)} miles from logged trips — add the end reading for the true total`}
               </div>
             </div>
@@ -2505,7 +2526,9 @@ function PrintSheet({ month, entries, totals }) {
     <div className="print-sheet">
       <h1 style={{ fontSize: "18px", margin: 0, fontWeight: 700 }}>{STORE.name} FSR &mdash; Catering Mileage Log</h1>
       <div style={{ fontSize: "13px", color: "#444", marginBottom: "12px" }}>
-        {monthLabel(month)} &middot; Reimbursement rate ${mileageRate().toFixed(2)}/mile &middot; Paid to {programLabel()}
+        {monthLabel(month)} &middot; ${totals.mixed
+          ? `Two rates this month: $${totals.rates.map((x) => x.toFixed(2)).join(" and $")}/mile`
+          : `Reimbursement rate $${(totals.rate ?? mileageRate()).toFixed(2)}/mile`} &middot; Paid to {programLabel()}
       </div>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
         <thead>
